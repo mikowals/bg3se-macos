@@ -21,7 +21,7 @@ macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: feature parit
 - `src/entity/` - Entity Component System (GUID lookup, components)
 - `ghidra/offsets/` - Reverse-engineered offsets documentation
 
-## Modding Toolkit (36 Commands)
+## Modding Toolkit (37 Commands)
 
 ```bash
 # Core pipeline
@@ -68,6 +68,7 @@ PYTHONPATH=tools python3 -m bg3se_harness parity scan       # Compare Ext table 
 PYTHONPATH=tools python3 -m bg3se_harness parity missing    # List gaps (offline)
 PYTHONPATH=tools python3 -m bg3se_harness compat list       # Available test scenarios
 PYTHONPATH=tools python3 -m bg3se_harness compat run mcm    # Autonomous mod compat test
+PYTHONPATH=tools python3 -m bg3se_harness compat vet mcm    # Vet mod: probe SE, scan logs, JSON report
 PYTHONPATH=tools python3 -m bg3se_harness doctor            # Verify all prerequisites
 PYTHONPATH=tools python3 -m bg3se_harness save list         # Available saves with metadata
 PYTHONPATH=tools python3 -m bg3se_harness author new MyMod  # Scaffold new mod

@@ -149,11 +149,11 @@ naturally.  We believe CLIs for games will become as second-nature as command
 palettes are in editors today, and we're excited to see what the modding
 community builds on top of this.
 
-The harness ships 36 commands spanning the full Script Extender lifecycle—build,
+The harness ships 37 commands spanning the full Script Extender lifecycle—build,
 patch, launch, test, entity inspection, RPG stats diffing, Lua hot-reload,
-screenshots, crash diagnostics, mod management, Nexus Mods API queries,
-bg3.wiki cross-reference, and a Ghidra RE bridge—all from the terminal, all
-emitting structured JSON.
+screenshots, crash diagnostics, mod management, mod compatibility vetting,
+Nexus Mods API queries, bg3.wiki cross-reference, and a Ghidra RE bridge—all
+from the terminal, all emitting structured JSON.
 
 ```bash
 # Core pipeline

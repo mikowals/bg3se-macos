@@ -358,6 +358,13 @@ class PakReader:
                 f"Decompression failed for {internal_path!r}: {exc}"
             ) from exc
 
+    def contains_script_extender(self) -> bool:
+        """Check if this PAK contains ScriptExtender/Config.json."""
+        for name in self._index:
+            if name.lower().endswith("scriptextender/config.json"):
+                return True
+        return False
+
     def get_mod_info(self) -> dict:
         """Extract mod metadata from the archive's meta.lsx.
 

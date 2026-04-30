@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -206,7 +207,7 @@ def run_scenario(scenario_name):
     try:
         from .crashlog import get_crash_report
         crash_data = get_crash_report(ring=False, tail=20)
-        has_crash = bool(crash_data.get("crash_detected"))
+        has_crash = bool(crash_data.get("signal"))
         log_step("crashlog", {"success": not has_crash, **crash_data})
     except Exception:
         log_step("crashlog", {"success": True, "note": "crashlog check skipped"})
@@ -247,6 +248,210 @@ def run_matrix():
     }
 
 
+def vet_mod(source, no_launch=False, output_path=None):
+    """Vet a single mod: install, detect SE requirement, probe, generate report.
+
+    source: Nexus mod ID (int), catalog key (str), or path to .pak file.
+
+    Returns a compat report dict with status, errors, warnings, and API usage.
+    """
+    from . import launch as launch_mod
+
+    catalog = _load_popular_mods()
+    report = {
+        "source": source,
+        "bg3se_version": _read_se_version(),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "status": "unknown",
+        "se_required": False,
+        "load_success": False,
+        "bootstrap_executed": False,
+        "apis_used": [],
+        "errors": [],
+        "warnings": [],
+        "notes": "",
+    }
+
+    # Resolve source to mod info
+    mod_info = None
+    pak_path = None
+
+    if source in catalog:
+        mod_info = catalog[source]
+        report["mod_name"] = mod_info["name"]
+        report["nexus_id"] = mod_info.get("nexus_id")
+        report["apis_used"] = mod_info.get("apis_used", [])
+        print(f"Vetting catalog mod: {mod_info['name']}", file=sys.stderr)
+    elif os.path.isfile(source) and Path(source).suffix.lower() == ".pak":
+        pak_path = source
+        report["mod_name"] = Path(source).stem
+        print(f"Vetting local PAK: {source}", file=sys.stderr)
+    else:
+        try:
+            nexus_id = int(source)
+            report["nexus_id"] = nexus_id
+            report["mod_name"] = f"nexus:{nexus_id}"
+            print(f"Vetting Nexus mod #{nexus_id}", file=sys.stderr)
+        except ValueError:
+            report["status"] = "error"
+            report["errors"].append(f"Cannot resolve source: {source!r}")
+            return report
+
+    # Step 1: Check if mod is installed (via PAK or modsettings)
+    from .mod_manager.registry import load_registry
+    registry = load_registry()
+    installed_uuid = None
+
+    if mod_info and mod_info.get("nexus_id"):
+        for uuid, entry in registry.items():
+            if mod_info["name"].lower() in (entry.get("name") or "").lower():
+                installed_uuid = uuid
+                break
+
+    if pak_path:
+        from .mod_manager.pak_inspector import PakReader, PakInspectorError
+        try:
+            with PakReader(pak_path) as pak:
+                info = pak.get_mod_info()
+                report["se_required"] = pak.contains_script_extender()
+                if info.get("uuid"):
+                    installed_uuid = info["uuid"]
+                    report["mod_name"] = info.get("name") or report["mod_name"]
+        except (PakInspectorError, OSError) as e:
+            report["errors"].append(f"PAK read failed: {e}")
+
+    # Step 2: Check SE socket and game status
+    game_running = launch_mod.is_running()
+    socket_ok = launch_mod.socket_alive()
+
+    if not game_running and not no_launch:
+        report["warnings"].append("Game not running. Launch with: bg3se-harness launch --continue")
+        report["status"] = "needs_launch"
+        _save_vet_report(report, output_path)
+        return report
+
+    if not socket_ok:
+        report["warnings"].append("SE socket not connected — game may be starting or SE not loaded")
+        report["status"] = "no_socket"
+        _save_vet_report(report, output_path)
+        return report
+
+    # Step 3: Probe via socket
+    from .console import Console
+    try:
+        with Console() as c:
+            # Check SE loaded
+            version = c.send("Ext.Print(Ext.Utils.Version())")
+            report["bg3se_version_live"] = version.strip() if version else "unknown"
+
+            # Check mod loaded (if we know the UUID)
+            if installed_uuid and _valid_uuid(installed_uuid):
+                is_loaded = c.send(
+                    f'local ok, res = pcall(Ext.Mod.IsModLoaded, "{installed_uuid}"); '
+                    f'Ext.Print(tostring(ok and res))'
+                )
+                report["load_success"] = "true" in (is_loaded or "").lower()
+
+                bootstrap_check = c.send(
+                    f'local ok = pcall(function() return Ext.Mod.GetMod("{installed_uuid}") end); '
+                    f'Ext.Print(tostring(ok))'
+                )
+                report["bootstrap_executed"] = "true" in (bootstrap_check or "").lower()
+            elif installed_uuid:
+                report["warnings"].append(f"Invalid UUID format, skipping probe: {installed_uuid!r}")
+
+    except (ConnectionRefusedError, FileNotFoundError, OSError) as e:
+        report["errors"].append(f"Console connection failed: {e}")
+        report["status"] = "socket_error"
+        _save_vet_report(report, output_path)
+        return report
+
+    # Step 4: Parse latest log for errors related to this mod
+    log_errors, log_warnings = _scan_log_for_mod(report.get("mod_name", ""))
+    report["errors"].extend(log_errors)
+    report["warnings"].extend(log_warnings)
+
+    # Step 5: Determine status
+    if report["errors"]:
+        report["status"] = "broken"
+    elif report["load_success"] and not report["warnings"]:
+        report["status"] = "working"
+    elif report["load_success"]:
+        report["status"] = "partial"
+    else:
+        report["status"] = "not_loaded"
+
+    _save_vet_report(report, output_path)
+    return report
+
+
+_UUID_RE = re.compile(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+)
+
+
+def _valid_uuid(s):
+    """Return True if s is a well-formed UUID (hex-dash format)."""
+    return bool(s and _UUID_RE.match(s))
+
+
+def _read_se_version():
+    """Read SE version from version.h."""
+    try:
+        from .config import PROJECT_ROOT
+        version_h = PROJECT_ROOT / "src/core/version.h"
+        if version_h.exists():
+            for line in version_h.read_text().splitlines():
+                if "BG3SE_VERSION" in line and '"' in line:
+                    return line.split('"')[1]
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _scan_log_for_mod(mod_name):
+    """Scan latest.log for errors/warnings mentioning a mod."""
+    errors = []
+    warnings = []
+    if not mod_name:
+        return errors, warnings
+    log_path = Path.home() / "Library/Application Support/BG3SE/logs/latest.log"
+    if not log_path.exists():
+        return errors, warnings
+
+    try:
+        lines = log_path.read_text(errors="replace").splitlines()
+        mod_lower = mod_name.lower()
+        for line in lines[-500:]:
+            lower = line.lower()
+            if mod_lower and mod_lower not in lower:
+                continue
+            if "error" in lower or "failed" in lower:
+                errors.append(line.strip()[:200])
+            elif "warn" in lower:
+                warnings.append(line.strip()[:200])
+    except OSError:
+        pass
+
+    return errors[:20], warnings[:20]
+
+
+def _save_vet_report(report, output_path=None):
+    """Save a vet report to docs/compat-reports/."""
+    from .config import PROJECT_ROOT
+    if output_path:
+        out = Path(output_path)
+    else:
+        reports_dir = PROJECT_ROOT / "docs" / "compat-reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        mod_slug = report.get("mod_name", "unknown").lower().replace(" ", "_")[:40]
+        out = reports_dir / f"{mod_slug}_{int(time.time())}.json"
+
+    out.write_text(json.dumps(report, indent=2))
+    print(f"Report saved: {out}", file=sys.stderr)
+
+
 def _save_report(report_dir, results):
     """Save report JSON to report directory."""
     report_path = report_dir / "report.json"
@@ -275,5 +480,14 @@ def cmd_compat(args):
         result = run_matrix()
         print(json.dumps(result, indent=2))
         return 0 if result.get("all_passed") else 1
+
+    elif subcmd == "vet":
+        result = vet_mod(
+            args.source,
+            no_launch=getattr(args, "no_launch", False),
+            output_path=getattr(args, "output", None),
+        )
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("status") == "working" else 1
 
     return 1

@@ -13,6 +13,50 @@ Each entry includes:
 
 ---
 
+## [v0.36.50+compat] - 2026-04-29 — BG3MacModManager compatibility + SE mod vetting
+
+**Category:** Harness tooling + C parser fix | **Parity:** ~94%
+
+Two themes: (A) interoperability fixes so the harness mod management pipeline
+produces modsettings.lsx files that BG3MacModManager, BG3, and the SE all agree
+on, and (B) a new `compat vet` command that probes a running game to generate
+per-mod compatibility reports.
+
+### Added
+- **`compat vet` command** — vets a mod from the catalog, by Nexus ID, or by
+  local PAK path. Resolves source, probes the SE socket, scans `latest.log`
+  for mod-specific errors, and writes a JSON report to `docs/compat-reports/`.
+- **SE mod auto-detection** — `PakReader.contains_script_extender()` scans PAK
+  index for `ScriptExtender/Config.json` and tags the mod as SE-required.
+- **ModCrashSanityCheck doctor check** — warns when Patch 8+ directory exists
+  (causes BG3 to deactivate externally-managed mods).
+- **File lock detection** — `doctor` checks for macOS immutable flag
+  (`chflags uchg`) on `modsettings.lsx`. Write path returns clear error.
+- **Expanded mod catalog** — `popular_mods.json` grows from 8 to 17 mods
+  across three tiers (P0-P3).
+- **UUID validation** — `compat vet` validates UUID format before Lua socket
+  interpolation (security hardening).
+
+### Changed
+- **modsettings.lsx format** — `PublishHandle` attribute added, UUID type
+  changed from `FixedString` to `guid` (matches BG3MacModManager).
+- **C parser updated** — `lua_mod.c` now accepts both `type="FixedString"` and
+  `type="guid"` for UUID attributes in modsettings.lsx.
+- **Deterministic UUID** — SHA-256-based version-5 UUIDs matching
+  BG3MacModManager's algorithm (was MD5).
+- **docs/supported-mods.md** — rewritten with tiered tables, vet workflow,
+  failure categories, ~94% API coverage table.
+
+### Fixed
+- **`mod list` crash** — `AttributeError` when result dict has no `success` key.
+- **Crash detection** — `run_scenario` now checks `signal` key (was checking
+  nonexistent `crash_detected`).
+- **`bootstrap_executed` false positive** — guarded on valid UUID.
+- **Log scanner over-match** — empty mod name no longer returns all errors.
+- **ImprovedUI Nexus ID** — corrected from 366 to 4688.
+
+---
+
 ## [v0.36.50+harness] - 2026-04-23 — bg3se-harness: a CLI for Baldur's Gate 3
 
 **Category:** Harness tooling (Python CLI, no dylib changes) | **Parity:** ~94%

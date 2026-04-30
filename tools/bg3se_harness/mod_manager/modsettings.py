@@ -16,8 +16,10 @@ C-parser compatibility.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import stat
 from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -65,7 +67,11 @@ def _mod_node_xml(mod: dict, indent: str = "          ") -> str:
     <attribute> line keeping the id/type/value attribute order.
 
     BG3 canonical attribute order within the ModuleShortDesc node:
-      Folder, MD5, Name, UUID, Version64
+      Folder, MD5, Name, PublishHandle, UUID, Version64
+
+    PublishHandle is always "0" for locally-installed mods. We hardcode it
+    rather than round-tripping because non-zero values only appear for
+    Larian-published DLC content that wouldn't flow through this path.
     """
     folder  = mod.get("folder",  "")
     md5     = mod.get("md5",     "")
@@ -75,11 +81,12 @@ def _mod_node_xml(mod: dict, indent: str = "          ") -> str:
 
     lines = [
         f'{indent}<node id="ModuleShortDesc">',
-        f'{indent}  {_attr("Folder",    "LSString",   folder)}',
-        f'{indent}  {_attr("MD5",       "LSString",   md5)}',
-        f'{indent}  {_attr("Name",      "LSString",   name)}',
-        f'{indent}  {_attr("UUID",      "FixedString", uuid)}',
-        f'{indent}  {_attr("Version64", "int64",      version)}',
+        f'{indent}  {_attr("Folder",        "LSString", folder)}',
+        f'{indent}  {_attr("MD5",           "LSString", md5)}',
+        f'{indent}  {_attr("Name",          "LSString", name)}',
+        f'{indent}  {_attr("PublishHandle", "uint64",   "0")}',
+        f'{indent}  {_attr("UUID",          "guid",     uuid)}',
+        f'{indent}  {_attr("Version64",     "int64",    version)}',
         f'{indent}</node>',
     ]
     return "\n".join(lines)
@@ -289,11 +296,26 @@ def _load_mods() -> tuple[str, list[dict]] | tuple[None, dict]:
         return None, {"error": f"IO error: {exc}"}
 
 
+def _is_locked(path: Path) -> bool:
+    """Check if file has macOS immutable flag (chflags uchg)."""
+    try:
+        return bool(os.stat(path).st_flags & stat.UF_IMMUTABLE)
+    except (OSError, AttributeError):
+        return False
+
+
 def _save_mods(raw: str, mods: list[dict]) -> dict | None:
     """
     Validate GustavX invariant and write the updated file.
     Returns {"error": str} if validation fails, None on success.
     """
+    if _is_locked(MODSETTINGS_PATH):
+        return {
+            "error": "modsettings.lsx is locked (chflags uchg) — unlock via "
+            "BG3MacModManager or: chflags nouchg "
+            f'"{MODSETTINGS_PATH}"'
+        }
+
     # Enforce GustavX at position 0
     if not mods or mods[0].get("uuid") != GUSTAVX_UUID:
         return {"error": "GustavX invariant violated: UUID not at position 0"}

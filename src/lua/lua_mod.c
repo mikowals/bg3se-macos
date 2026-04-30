@@ -86,13 +86,19 @@ static void load_mod_uuids(void) {
         const char *node_end = strstr(node_start, "</node>");
         if (!node_end) break;
 
-        // Extract UUID
-        const char *uuid_marker = "attribute id=\"UUID\" type=\"FixedString\" value=\"";
-        const char *uuid_start = strstr(node_start, uuid_marker);
+        // Extract UUID — accept both type="FixedString" (legacy) and type="guid" (BG3MacModManager)
+        const char *uuid_marker_fs = "attribute id=\"UUID\" type=\"FixedString\" value=\"";
+        const char *uuid_marker_guid = "attribute id=\"UUID\" type=\"guid\" value=\"";
+        const char *uuid_start = strstr(node_start, uuid_marker_fs);
+        size_t uuid_marker_len = strlen(uuid_marker_fs);
+        if (!uuid_start || uuid_start >= node_end) {
+            uuid_start = strstr(node_start, uuid_marker_guid);
+            uuid_marker_len = strlen(uuid_marker_guid);
+        }
         char uuid[UUID_LEN] = "";
 
         if (uuid_start && uuid_start < node_end) {
-            uuid_start += strlen(uuid_marker);
+            uuid_start += uuid_marker_len;
             const char *uuid_end = strchr(uuid_start, '"');
             if (uuid_end && uuid_end < node_end) {
                 size_t len = uuid_end - uuid_start;

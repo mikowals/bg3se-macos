@@ -68,11 +68,13 @@ def _read_pak_info(pak_path: Path) -> dict:
     """Open a PAK and return its mod info dict.
 
     Returns ``{"error": str}`` on failure.  On success the dict has keys:
-    uuid, name, author, description, version, meta_path.
+    uuid, name, author, description, version, meta_path, se_mod.
     """
     try:
         with PakReader(str(pak_path)) as pak:
-            return pak.get_mod_info()
+            info = pak.get_mod_info()
+            info["se_mod"] = pak.contains_script_extender()
+            return info
     except (PakInspectorError, OSError) as exc:
         return {"error": str(exc)}
 
@@ -207,6 +209,7 @@ def install_local(source_path: str, enable: bool = True) -> dict:
             folder=folder,
             source_path=source_path,
             pak_path=pak_path_str,
+            se_mod=info.get("se_mod", False),
             version=version,
             author=info.get("author"),
             description=info.get("description"),
@@ -260,10 +263,15 @@ def install_local(source_path: str, enable: bool = True) -> dict:
                 pass
 
         if uuid is None:
-            # No meta — generate a placeholder UUID from the folder name
+            # No meta — generate a deterministic UUID from the folder name.
+            # Algorithm matches BG3MacModManager's ModInfo.deterministicUUID():
+            # SHA-256, first 16 bytes, version nibble 5, RFC 4122 variant bits.
             import hashlib
-            seed = src.name.encode("utf-8")
-            h = hashlib.md5(seed).hexdigest()
+            digest = hashlib.sha256(src.name.lower().encode("utf-8")).digest()
+            b = bytearray(digest[:16])
+            b[6] = (b[6] & 0x0F) | 0x50  # version 5
+            b[8] = (b[8] & 0x3F) | 0x80  # variant RFC 4122
+            h = b.hex()
             uuid = f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
             _stderr(f"WARNING: No meta.lsx found; generated synthetic UUID {uuid}")
 

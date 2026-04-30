@@ -28,7 +28,7 @@ def cmd_mod(args):
         from .mod_manager.registry import list_mods
         result = list_mods()
         print(json.dumps(result, indent=2))
-        return 0 if result.get("success", True) else 1
+        return 0
 
     elif subcmd == "install":
         source = args.source

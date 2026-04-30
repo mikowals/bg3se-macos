@@ -15,10 +15,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import stat
+
 from .config import (
     BG3_APP_BUNDLE, BG3_EXEC, DEPLOYED_DYLIB, HARNESS_CONFIG_DIR,
-    INSERT_DYLIB, MODS_DIR, MODSETTINGS_PATH, SAVES_DIR, SOCKET_PATH,
-    PROJECT_ROOT,
+    INSERT_DYLIB, MOD_CRASH_SANITY_CHECK_DIR, MODS_DIR, MODSETTINGS_PATH,
+    SAVES_DIR, SOCKET_PATH, PROJECT_ROOT,
 )
 from . import launch as launch_mod
 from . import patch as patch_mod
@@ -191,6 +193,32 @@ def run_doctor():
         "no_launcher_bypass",
         nolauncher,
         fix="Run: defaults write com.larian.bg3 NoLauncher 1",
+    ))
+
+    # 16. ModCrashSanityCheck directory (Patch 8+ footgun)
+    sanity_exists = MOD_CRASH_SANITY_CHECK_DIR.exists()
+    checks.append(_check(
+        "mod_crash_sanity_check",
+        not sanity_exists,
+        detail="Not present (good)" if not sanity_exists else str(MOD_CRASH_SANITY_CHECK_DIR),
+        fix=(
+            "Delete this directory — since Patch 8, BG3 deactivates externally-managed "
+            f"mods when it exists: rm -rf \"{MOD_CRASH_SANITY_CHECK_DIR}\""
+        ),
+    ))
+
+    # 17. modsettings.lsx file locking (chflags uchg)
+    modsettings_locked = False
+    if MODSETTINGS_PATH.exists():
+        try:
+            modsettings_locked = bool(os.stat(MODSETTINGS_PATH).st_flags & stat.UF_IMMUTABLE)
+        except (OSError, AttributeError):
+            pass
+    checks.append(_check(
+        "modsettings_unlocked",
+        not modsettings_locked,
+        detail="Locked (chflags uchg)" if modsettings_locked else "Writable",
+        fix=f'Unlock: chflags nouchg "{MODSETTINGS_PATH}"',
     ))
 
     # Summary

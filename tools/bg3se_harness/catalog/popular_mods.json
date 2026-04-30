@@ -1,12 +1,13 @@
 {
-  "version": 1,
-  "description": "Popular BG3SE mods for compatibility testing. Priority: P0 (gate), P1 (high), P2 (standard), P3 (low risk).",
+  "version": 2,
+  "description": "Popular BG3SE mods for compatibility testing. Priority: P0 (gate), P1 (high), P2 (standard), P3 (edge case). Tier 1 mods should be vetted first.",
   "mods": {
     "mcm": {
       "name": "Mod Configuration Menu",
       "nexus_id": 8901,
       "author": "AtilioA",
       "priority": "P0",
+      "tier": 1,
       "github": "AtilioA/BG3-MCM",
       "apis_used": ["Ext.IMGUI", "Ext.Net", "Ext.Vars", "Ext.ModEvents", "Ext.RegisterNetListener", "Ext.Events", "Ext.Mod"],
       "requires_mcm": false,
@@ -17,23 +18,68 @@
       "nexus_id": 1333,
       "author": "NellsRelo",
       "priority": "P0",
+      "tier": 1,
       "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Osiris", "Ext.Events", "Ext.Utils", "Ext.ModEvents"],
       "requires_mcm": false,
       "notes": "Shared utilities and compatibility framework. Dependency for hundreds of mods."
+    },
+    "5e_spells": {
+      "name": "5e Spells",
+      "nexus_id": 366,
+      "author": "DiZ91891",
+      "priority": "P0",
+      "tier": 1,
+      "apis_used": ["Ext.Stats", "Ext.Osiris", "Ext.Events", "Ext.StaticData"],
+      "requires_mcm": false,
+      "notes": "Most endorsed SE spell mod. Tests Stats, functors, StaticData."
+    },
+    "expansion_lvl20": {
+      "name": "Expansion - Level 20",
+      "nexus_id": 3755,
+      "author": "nitram166",
+      "priority": "P0",
+      "tier": 1,
+      "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Osiris", "Ext.StaticData"],
+      "requires_mcm": false,
+      "notes": "Major gameplay mod — levels 13-20, spells 7-9. Tests Stats, progression, StaticData."
+    },
+    "more_reactive_companions": {
+      "name": "More Reactive Companions",
+      "nexus_id": 5447,
+      "author": "LightningLarryL",
+      "priority": "P1",
+      "tier": 1,
+      "apis_used": ["Ext.Osiris", "Ext.Events"],
+      "requires_mcm": false,
+      "notes": "Already confirmed working on v0.36.17. Re-verify on latest.",
+      "last_tested": "v0.36.17",
+      "last_status": "working"
     },
     "combat_extender": {
       "name": "Combat Extender",
       "nexus_id": 5207,
       "author": "DarknessSilverTower",
       "priority": "P1",
+      "tier": 2,
       "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Osiris", "Ext.Events", "Ext.Vars"],
       "requires_mcm": true,
       "notes": "Most popular gameplay mod. Stress-tests Stats + MCM."
+    },
+    "party_limit_begone": {
+      "name": "Party Limit Begone",
+      "nexus_id": 327,
+      "author": "SildurFX",
+      "priority": "P1",
+      "tier": 2,
+      "apis_used": ["Ext.Entity", "Ext.Osiris", "Ext.Events"],
+      "requires_mcm": false,
+      "notes": "Party limit to 16, multiplayer to 8. Tests entity manipulation."
     },
     "camp_event_notifications": {
       "name": "Camp Event Notifications",
       "nexus_id": 7247,
       "priority": "P1",
+      "tier": 2,
       "apis_used": ["Ext.Events", "Ext.Osiris", "Ext.IMGUI"],
       "requires_mcm": true,
       "notes": "Tests IMGUI notification rendering."
@@ -42,14 +88,34 @@
       "name": "Auto Send Food To Camp",
       "nexus_id": 5978,
       "priority": "P1",
+      "tier": 2,
       "apis_used": ["Ext.Osiris", "Ext.Events", "Ext.Vars"],
       "requires_mcm": true,
       "notes": "Simple MCM smoke test — minimal API surface."
+    },
+    "always_show_approvals": {
+      "name": "Always Show Approvals",
+      "nexus_id": 5373,
+      "priority": "P2",
+      "tier": 2,
+      "apis_used": ["Ext.Events", "Ext.Entity", "Ext.Osiris"],
+      "requires_mcm": false,
+      "notes": "Tests UI hooks and Events system."
+    },
+    "ai_allies": {
+      "name": "AI Allies",
+      "nexus_id": 7780,
+      "priority": "P2",
+      "tier": 2,
+      "apis_used": ["Ext.Entity", "Ext.Osiris", "Ext.Events", "Ext.Stats"],
+      "requires_mcm": false,
+      "notes": "Tests entity creation, Osiris integration."
     },
     "configurable_enemies": {
       "name": "Configurable Enemies",
       "nexus_id": 5765,
       "priority": "P2",
+      "tier": 2,
       "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Osiris", "Ext.Events"],
       "requires_mcm": true,
       "notes": "Stress-tests Stats mutation under MCM control."
@@ -58,18 +124,48 @@
       "name": "Smart Autosaving",
       "nexus_id": 7358,
       "priority": "P2",
+      "tier": 2,
       "apis_used": ["Ext.Timer", "Ext.Events", "Ext.Vars"],
       "requires_mcm": true,
       "notes": "Tests Timer persistence across save/load."
     },
+    "spell_points_5e": {
+      "name": "Spell Points 5e",
+      "nexus_id": 11959,
+      "priority": "P2",
+      "tier": 3,
+      "apis_used": ["Ext.Stats", "Ext.StaticData", "Ext.Events"],
+      "requires_mcm": false,
+      "notes": "SE plugin, tests StaticData and Stats interaction."
+    },
+    "randomised_loot": {
+      "name": "Randomised Equipment Loot",
+      "nexus_id": 9262,
+      "priority": "P2",
+      "tier": 3,
+      "apis_used": ["Ext.Stats", "Ext.Entity", "Ext.Events"],
+      "requires_mcm": false,
+      "notes": "Tests Stats, loot table access."
+    },
     "improved_ui": {
       "name": "ImprovedUI",
-      "nexus_id": 366,
+      "nexus_id": 4688,
       "author": "Djmr",
-      "priority": "P2",
+      "priority": "P3",
+      "tier": 3,
       "apis_used": [],
       "requires_mcm": false,
-      "notes": "Pure UI XML mod — no SE APIs. Tests clean load + screenshot comparison."
+      "notes": "Pure UI XML mod — no SE APIs. Tests clean load (negative control)."
+    },
+    "bg3_mod_fixer": {
+      "name": "BG3 Mod Fixer",
+      "nexus_id": 4284,
+      "author": "figs999",
+      "priority": "P3",
+      "tier": 3,
+      "apis_used": [],
+      "requires_mcm": false,
+      "notes": "Story recompile — unnecessary on Patch 7+. Negative test."
     }
   }
 }

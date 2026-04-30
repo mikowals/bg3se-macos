@@ -35,5 +35,6 @@ Documentation for BG3SE-macOS users, contributors, and developers.
 |-----------|----------|
 | `archive/` | Historical documentation |
 | `arm64/` | ARM64-specific notes |
+| `compat-reports/` | Automated mod vet reports (JSON, from `compat vet`) |
 | `components/` | Component documentation |
 | `solutions/` | Solved problems and patterns |

@@ -22,7 +22,7 @@ PYTHONPATH=tools python3 -m bg3se_harness run "Ext.GetVersion()"
 
 ## Commands
 
-The harness exposes 36 subcommands grouped by workflow stage.  Every command
+The harness exposes 37 subcommands grouped by workflow stage.  Every command
 emits JSON to stdout so it composes with `jq`, test pipelines, and agent
 tooling.
 
@@ -113,6 +113,7 @@ follow-up.
 |---------|-------------|
 | `parity scan` / `parity missing` | Compare Ext table vs Windows baseline |
 | `compat list` / `compat run mcm` | Autonomous mod compat scenarios |
+| `compat vet <source>` | Vet mod (catalog key, Nexus ID, PAK path) — JSON report |
 | `author new MyMod` | Scaffold a new mod directory |
 | `menu detect` / `menu click "Continue"` | Vision OCR + CGEvent main-menu automation |
 | `flags [--group X]` | 40 discovered BG3 CLI flags |

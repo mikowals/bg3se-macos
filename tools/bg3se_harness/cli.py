@@ -540,6 +540,11 @@ def main():
 
     compat_sub.add_parser("matrix", help="Run all scenarios and produce summary")
 
+    p_cv = compat_sub.add_parser("vet", help="Vet a mod: install, detect SE, probe, report")
+    p_cv.add_argument("source", help="Nexus mod ID, catalog key, or path to .pak")
+    p_cv.add_argument("--no-launch", action="store_true", help="Skip game launch (use running game)")
+    p_cv.add_argument("--output", "-o", help="Output report path (default: docs/compat-reports/)")
+
     # author
     p_author = sub.add_parser("author", help="Mod authoring tools")
     author_sub = p_author.add_subparsers(dest="author_command", required=True)

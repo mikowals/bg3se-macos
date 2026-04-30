@@ -1,0 +1,25 @@
+{
+  "source": "mcm",
+  "bg3se_version": "0.37.1",
+  "timestamp": "2026-04-29T21:47:22",
+  "status": "no_socket",
+  "se_required": false,
+  "load_success": false,
+  "bootstrap_executed": false,
+  "apis_used": [
+    "Ext.IMGUI",
+    "Ext.Net",
+    "Ext.Vars",
+    "Ext.ModEvents",
+    "Ext.RegisterNetListener",
+    "Ext.Events",
+    "Ext.Mod"
+  ],
+  "errors": [],
+  "warnings": [
+    "SE socket not connected \u2014 game may be starting or SE not loaded"
+  ],
+  "notes": "",
+  "mod_name": "Mod Configuration Menu",
+  "nexus_id": 8901
+}

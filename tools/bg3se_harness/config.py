@@ -20,6 +20,7 @@ MODS_DIR = LARIAN_LOCAL / "Mods"
 MODSETTINGS_PATH = LARIAN_LOCAL / "PlayerProfiles/Public/modsettings.lsx"
 GRAPHIC_SETTINGS_PATH = LARIAN_LOCAL / "graphicSettings.lsx"
 SAVES_DIR = LARIAN_LOCAL / "PlayerProfiles/Public/Savegames/Story"
+MOD_CRASH_SANITY_CHECK_DIR = LARIAN_LOCAL / "ModCrashSanityCheck"
 
 # Harness data paths
 HARNESS_CONFIG_DIR = Path.home() / ".config/bg3se-harness"
