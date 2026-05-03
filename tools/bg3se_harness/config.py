@@ -33,4 +33,5 @@ CATALOG_DIR = Path(__file__).resolve().parent / "catalog"
 SCENARIOS_DIR = Path(__file__).resolve().parent / "scenarios"
 
 # GustavX invariant — must always be at position 0 in modsettings.lsx
-GUSTAVX_UUID = "28ac9ce2-2aba-8cda-b3b5-6e922f71b6b8"
+# Match by name, not UUID — the UUID changes between game versions
+GUSTAVX_NAME = "GustavX"

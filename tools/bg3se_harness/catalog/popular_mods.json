@@ -4,8 +4,8 @@
   "mods": {
     "mcm": {
       "name": "Mod Configuration Menu",
-      "nexus_id": 8901,
-      "author": "AtilioA",
+      "nexus_id": 9162,
+      "author": "Volitio",
       "priority": "P0",
       "tier": 1,
       "github": "AtilioA/BG3-MCM",
@@ -25,8 +25,8 @@
     },
     "5e_spells": {
       "name": "5e Spells",
-      "nexus_id": 366,
-      "author": "DiZ91891",
+      "nexus_id": 125,
+      "author": "Celes",
       "priority": "P0",
       "tier": 1,
       "apis_used": ["Ext.Stats", "Ext.Osiris", "Ext.Events", "Ext.StaticData"],
@@ -35,7 +35,7 @@
     },
     "expansion_lvl20": {
       "name": "Expansion - Level 20",
-      "nexus_id": 3755,
+      "nexus_id": 279,
       "author": "nitram166",
       "priority": "P0",
       "tier": 1,

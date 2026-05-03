@@ -6,7 +6,7 @@ macOS port of Norbyte's Script Extender for Baldur's Gate 3. Goal: feature parit
 
 ## Stack
 
-- C17/C++20, Universal binary (arm64 + x86_64)
+- C23/C++20, Universal binary (arm64 + x86_64)
 - Dobby (inline hooking), Lua 5.4, lz4, zlib
 - Injection: `insert_dylib` static Mach-O patching (LC_LOAD_WEAK_DYLIB) — DYLD_INSERT_LIBRARIES is dead (crashes through Steam)
 - Launcher bypass: `defaults write com.larian.bg3 NoLauncher 1` (set automatically by harness)

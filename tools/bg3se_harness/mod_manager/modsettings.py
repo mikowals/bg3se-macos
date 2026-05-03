@@ -2,7 +2,7 @@
 modsettings.py — Read/write BG3 modsettings.lsx
 
 Invariants:
-- GustavX (GUSTAVX_UUID) must always remain at position 0 in the mod order.
+- GustavX must always remain at position 0 in the mod order (matched by name, not UUID).
 - Every write is preceded by a timestamped backup capped at 20 files.
 - XML attribute order within <attribute> elements is always: id, type, value.
   The C parser (mod_loader.c) uses strstr() and depends on this exact ordering.
@@ -26,11 +26,11 @@ from xml.etree import ElementTree as ET
 
 # Import project paths from config
 try:
-    from ..config import MODSETTINGS_PATH, HARNESS_CONFIG_DIR, GUSTAVX_UUID
+    from ..config import MODSETTINGS_PATH, HARNESS_CONFIG_DIR, GUSTAVX_NAME
 except ImportError:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from config import MODSETTINGS_PATH, HARNESS_CONFIG_DIR, GUSTAVX_UUID
+    from config import MODSETTINGS_PATH, HARNESS_CONFIG_DIR, GUSTAVX_NAME
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -41,6 +41,37 @@ MAX_BACKUPS = 20
 
 # Default version for new mods (matches BG3SE Windows reference)
 DEFAULT_VERSION = "36028797018963968"
+
+
+def _is_gustavx_entry(mod: dict | None) -> bool:
+    if not mod:
+        return False
+    return mod.get("name") == GUSTAVX_NAME or mod.get("folder") == GUSTAVX_NAME
+
+
+def _module_short_desc_nodes(root: ET.Element) -> list[ET.Element]:
+    """
+    Return the load-order ModuleShortDesc nodes from one authoritative block.
+
+    Some modsettings.lsx files contain both ModOrder and Mods with identical
+    contents, while current BG3-generated files may contain only Mods. Reading
+    every ModuleShortDesc globally would duplicate entries when both exist.
+    """
+    for container_id in ("ModOrder", "Mods"):
+        for node in root.iter("node"):
+            if node.get("id") != container_id:
+                continue
+            children = next((child for child in node if child.tag == "children"), None)
+            if children is None:
+                continue
+            descs = [
+                child
+                for child in children
+                if child.tag == "node" and child.get("id") == "ModuleShortDesc"
+            ]
+            if descs:
+                return descs
+    return [node for node in root.iter("node") if node.get("id") == "ModuleShortDesc"]
 
 # ---------------------------------------------------------------------------
 # Internal: XML serialization with guaranteed attribute order
@@ -109,9 +140,7 @@ def _parse_modsettings(path: Path) -> tuple[ET.ElementTree, list[dict]]:
 
     mods: list[dict] = []
 
-    for node in root.iter("node"):
-        if node.get("id") != "ModuleShortDesc":
-            continue
+    for node in _module_short_desc_nodes(root):
         entry: dict = {}
         for attr in node:
             if attr.tag != "attribute":
@@ -172,13 +201,12 @@ def _serialise_modsettings(original_text: str, mods: list[dict]) -> str:
     def replacer(m: re.Match) -> str:
         return m.group(1) + "\n" + inner + "\n          " + m.group(3)
 
-    result, n = _MOD_ORDER_CHILDREN_RE.subn(replacer, original_text)
-    if n == 0:
-        result = _build_full_lsx(mods)
-        return result
+    result, mod_order_count = _MOD_ORDER_CHILDREN_RE.subn(replacer, original_text)
 
-    # Also replace the Mods block to keep both in sync
-    result, _ = _MODS_CHILDREN_RE.subn(replacer, result)
+    # Also replace the Mods block to keep both in sync when it exists.
+    result, mods_count = _MODS_CHILDREN_RE.subn(replacer, result)
+    if mod_order_count == 0 and mods_count == 0:
+        return _build_full_lsx(mods)
     return result
 
 
@@ -317,8 +345,14 @@ def _save_mods(raw: str, mods: list[dict]) -> dict | None:
         }
 
     # Enforce GustavX at position 0
-    if not mods or mods[0].get("uuid") != GUSTAVX_UUID:
-        return {"error": "GustavX invariant violated: UUID not at position 0"}
+    if not mods or not _is_gustavx_entry(mods[0]):
+        got = mods[0].get("name") if mods else "empty"
+        return {
+            "error": (
+                f"GustavX invariant violated: expected {GUSTAVX_NAME!r} "
+                f"at position 0, got {got!r}"
+            )
+        }
 
     new_text = _serialise_modsettings(raw, mods)
     MODSETTINGS_PATH.write_text(new_text, encoding="utf-8")
@@ -384,12 +418,13 @@ def remove_mod(uuid: str) -> dict:
 
     Returns {"removed": bool, "uuid": str} or {"error": str}.
     """
-    if uuid == GUSTAVX_UUID:
-        return {"error": "Cannot remove GustavX — it must remain at position 0"}
-
     raw, mods = _load_mods()
     if raw is None:
         return mods
+
+    target = next((m for m in mods if m.get("uuid") == uuid), None)
+    if _is_gustavx_entry(target):
+        return {"error": "Cannot remove GustavX — it must remain at position 0"}
 
     original_count = len(mods)
     mods = [m for m in mods if m.get("uuid") != uuid]
@@ -446,9 +481,6 @@ def reorder_mod(uuid: str, before_uuid: str) -> dict:
 
     Returns {"reordered": True, "uuid": str} or {"error": str}.
     """
-    if uuid == GUSTAVX_UUID:
-        return {"error": "Cannot reorder GustavX — it is pinned at position 0"}
-
     raw, mods = _load_mods()
     if raw is None:
         return mods
@@ -456,15 +488,20 @@ def reorder_mod(uuid: str, before_uuid: str) -> dict:
     source = next((m for m in mods if m.get("uuid") == uuid), None)
     if source is None:
         return {"error": f"Mod {uuid} not found in load order"}
+    if _is_gustavx_entry(source):
+        return {"error": "Cannot reorder GustavX — it is pinned at position 0"}
 
-    if before_uuid != GUSTAVX_UUID:
+    before_is_gustavx = any(
+        m.get("uuid") == before_uuid and _is_gustavx_entry(m)
+        for m in mods
+    )
+    if not before_is_gustavx:
         target_idx = next(
             (i for i, m in enumerate(mods) if m.get("uuid") == before_uuid), None
         )
         if target_idx is None:
             return {"error": f"Target mod {before_uuid} not found in load order"}
     else:
-        # "before GustavX" means position 1 (right after GustavX)
         target_idx = 1
 
     # Remove source, re-insert at target position
@@ -474,7 +511,7 @@ def reorder_mod(uuid: str, before_uuid: str) -> dict:
     target_idx = next(
         (i for i, m in enumerate(mods) if m.get("uuid") == before_uuid),
         len(mods),
-    ) if before_uuid != GUSTAVX_UUID else 1
+    ) if not before_is_gustavx else 1
 
     mods.insert(target_idx, source)
 

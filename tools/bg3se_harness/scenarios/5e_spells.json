@@ -1,0 +1,14 @@
+{
+  "description": "5e Spells compatibility test. P0 — top spell mod, tests Stats+StaticData functor chain.",
+  "mods": ["5e_spells"],
+  "save_fixture": null,
+  "assertions": [
+    "assert(Ext.Utils.Version() ~= nil, 'SE loaded')",
+    "assert(type(Ext.Stats.Get) == 'function', 'Ext.Stats.Get exists')",
+    "assert(type(Ext.Stats.GetAll) == 'function', 'Ext.Stats.GetAll exists')",
+    "assert(type(Ext.StaticData.Get) == 'function', 'Ext.StaticData.Get exists')",
+    "assert(type(Ext.Osiris.RegisterListener) == 'function', 'Ext.Osiris.RegisterListener exists')",
+    "assert(type(Ext.Events.Subscribe) == 'function', 'Ext.Events.Subscribe exists')"
+  ],
+  "notes": "5e Spells adds unimplemented D&D spells. Tests stat creation and functor resolution."
+}

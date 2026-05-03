@@ -21,10 +21,10 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 try:
-    from ..config import MODS_DIR, GUSTAVX_UUID
+    from ..config import MODS_DIR, GUSTAVX_NAME
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from config import MODS_DIR, GUSTAVX_UUID  # type: ignore
+    from config import MODS_DIR, GUSTAVX_NAME  # type: ignore
 
 from .pak_inspector import PakReader, PakInspectorError
 from .modsettings import add_mod, remove_mod, backup_modsettings
@@ -42,6 +42,10 @@ def _stderr(msg: str) -> None:
 
 def _ensure_mods_dir() -> None:
     MODS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _is_gustavx_metadata(name: str | None, folder: str | None) -> bool:
+    return name == GUSTAVX_NAME or folder == GUSTAVX_NAME
 
 
 def _derive_folder(pak_path: Path, info: dict) -> str:
@@ -172,7 +176,7 @@ def install_local(source_path: str, enable: bool = True) -> dict:
         version = info.get("version") or "36028797018963968"
 
         # Refuse to stomp GustavX
-        if uuid == GUSTAVX_UUID:
+        if _is_gustavx_metadata(name, folder):
             return {"error": "Cannot install GustavX as a mod — it is a system entry."}
 
         dest_pak = MODS_DIR / src.name
@@ -275,7 +279,7 @@ def install_local(source_path: str, enable: bool = True) -> dict:
             uuid = f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
             _stderr(f"WARNING: No meta.lsx found; generated synthetic UUID {uuid}")
 
-        if uuid == GUSTAVX_UUID:
+        if _is_gustavx_metadata(name, folder):
             return {"error": "Cannot install GustavX as a mod — it is a system entry."}
 
         ms_result = {"added": False}
@@ -349,7 +353,7 @@ def uninstall(uuid_or_name: str) -> dict:
     entry = registry[uuid]
     name = entry.get("name") or uuid
 
-    if uuid == GUSTAVX_UUID:
+    if _is_gustavx_metadata(name, entry.get("folder")):
         return {"error": "Cannot uninstall GustavX — it is a system entry."}
 
     # Backup modsettings before any write

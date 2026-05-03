@@ -337,11 +337,13 @@ static int lua_timer_waitfor_persistent(lua_State *L) {
             // For now, only support simple key-value pairs
             lua_pushvalue(L, 3);
             char *p = args_buffer;
+            char *end = args_buffer + sizeof(args_buffer) - 2;
             *p++ = '{';
             bool first = true;
 
             lua_pushnil(L);
             while (lua_next(L, -2) != 0) {
+                if (p >= end) { lua_pop(L, 2); break; }
                 if (!first) {
                     *p++ = ',';
                 }

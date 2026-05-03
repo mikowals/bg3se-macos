@@ -2008,15 +2008,23 @@ void staticdata_probe_manager(StaticDataType type, int probe_range) {
     log_message("[StaticData] Probing %s manager at %p (range: 0x%X):",
                 staticdata_type_name(type), mgr, probe_range);
 
-    // Dump hex view of manager structure
-    uint8_t* data = (uint8_t*)mgr;
+    // Dump hex view of manager structure (using safe reads)
     for (int offset = 0; offset < probe_range; offset += 16) {
         char hex[64] = {0};
         char ascii[20] = {0};
+        uint8_t chunk[16] = {0};
 
-        for (int i = 0; i < 16 && (offset + i) < probe_range; i++) {
-            sprintf(hex + strlen(hex), "%02X ", data[offset + i]);
-            ascii[i] = isprint(data[offset + i]) ? data[offset + i] : '.';
+        int chunk_size = 16 < (probe_range - offset) ? 16 : (probe_range - offset);
+        if (!safe_memory_read(
+                (mach_vm_address_t)((uint8_t*)mgr + offset),
+                chunk, chunk_size)) {
+            log_message("  +0x%02X: <unreadable>", offset);
+            continue;
+        }
+
+        for (int i = 0; i < chunk_size; i++) {
+            sprintf(hex + strlen(hex), "%02X ", chunk[i]);
+            ascii[i] = isprint(chunk[i]) ? chunk[i] : '.';
         }
 
         log_message("  +0x%02X: %-48s %s", offset, hex, ascii);

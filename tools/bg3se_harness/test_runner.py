@@ -7,7 +7,7 @@ from .console import Console
 # Matches: "  PASS: Core.Print (2ms) [1/85]"
 # or:      "  FAIL: Stats.Bad (5ms) - Expected string, got nil [3/85]"
 TEST_LINE_RE = re.compile(
-    r'(PASS|FAIL):\s+(\S+)\s+\((\d+)ms\)(?:\s+-\s+(.+?))?\s+\[(\d+)/(\d+)\]'
+    r'(PASS|FAIL):\s+(\S+)\s+\((\d+)ms\)(?:\s+\[SLOW \d+ms\])?(?:\s+-\s+(.+?))?\s+\[(\d+)/(\d+)\]'
 )
 
 # Matches: "=== Results: 83/85 passed, 2 failed, 0 skipped (142ms) ==="

@@ -57,7 +57,7 @@ def skip(name, reason=""):
 
 
 def test_help():
-    """All 22 commands show --help without error."""
+    """All 30 commands show --help without error."""
     print("\n=== Help Text ===")
     out, err, rc = run(["--help"])
     check("main --help exits 0", rc == 0)
@@ -66,7 +66,8 @@ def test_help():
         "build", "patch", "unpatch", "launch", "test", "run", "eval",
         "status", "entity", "entity-search", "components", "flags",
         "screenshot", "stats", "watch", "dump", "crashlog", "benchmark",
-        "events", "diff-test", "probe", "ghidra",
+        "events", "diff-test", "probe", "ghidra", "mod", "compat",
+        "wiki", "parity", "doctor", "save", "menu", "author",
     ]
     for cmd in commands:
         out, err, rc = run([cmd, "--help"])
