@@ -170,9 +170,12 @@ def restore(fixture_name):
     # Determine destination name in saves dir
     dest = SAVES_DIR / f"Harness__{fixture_name}"
 
-    # Remove previous restore if it exists
+    # Backup previous restore before overwriting
     if dest.exists():
-        shutil.rmtree(str(dest))
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dest = dest.parent / f"{dest.name}__backup_{ts}"
+        shutil.move(str(dest), str(backup_dest))
 
     shutil.copytree(str(fixture_path), str(dest))
 

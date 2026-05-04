@@ -1,0 +1,30 @@
+name: Offline Tests
+on: [push, pull_request]
+
+jobs:
+  tier0:
+    name: Tier 0 — Native C unit tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Configure
+        run: mkdir build && cd build && cmake ..
+      - name: Build test binary
+        run: cmake --build build --target bg3se_test_tier0
+      - name: Run tests
+        run: ./build/bin/bg3se_test_tier0
+
+  tierH:
+    name: Tier H — Python harness tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: pip install pytest
+      - name: Run tests
+        run: PYTHONPATH=tools pytest tests/harness/ -v

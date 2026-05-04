@@ -332,3 +332,31 @@ option(BUILD_IMGUI_TEST "Build standalone ImGui test application" ON)
 if(BUILD_IMGUI_TEST)
     add_subdirectory(tools/imgui_test)
 endif()
+
+# ============================================
+# Tier 0: Native C unit tests (no game dependency)
+# ============================================
+option(BUILD_TESTS "Build Tier 0 unit test binary" ON)
+if(BUILD_TESTS)
+    add_executable(bg3se_test_tier0
+        tests/tier0/test_main.c
+        tests/tier0/test_safe_memory.c
+        tests/tier0/test_pattern_scan.c
+        tests/tier0/test_osiris_handles.c
+        tests/tier0/test_entity_events.c
+        tests/tier0/stub_logging.c
+        src/core/safe_memory.c
+        src/osiris/pattern_scan.c
+    )
+    target_include_directories(bg3se_test_tier0 PRIVATE
+        ${CMAKE_SOURCE_DIR}/tests/tier0
+        ${CMAKE_SOURCE_DIR}/src/core
+        ${CMAKE_SOURCE_DIR}/src/osiris
+        ${CMAKE_SOURCE_DIR}/src/entity
+    )
+    target_link_libraries(bg3se_test_tier0 PRIVATE "-framework Foundation")
+    set_target_properties(bg3se_test_tier0 PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}"
+    )
+endif()

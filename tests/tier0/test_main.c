@@ -1,0 +1,28 @@
+/*
+ * BG3SE-macOS Tier 0 Test Runner
+ * Minimal assert+printf framework. No external dependencies.
+ */
+
+#include "test_harness.h"
+
+int g_passed = 0;
+int g_failed = 0;
+jmp_buf g_test_jmp;
+
+void register_safe_memory_tests(void);
+void register_pattern_scan_tests(void);
+void register_osiris_handle_tests(void);
+void register_entity_events_tests(void);
+
+int main(void) {
+    printf("=== BG3SE Tier 0 Unit Tests ===\n\n");
+
+    register_safe_memory_tests();
+    register_pattern_scan_tests();
+    register_osiris_handle_tests();
+    register_entity_events_tests();
+
+    printf("\n=== Results: %d/%d passed, %d failed ===\n",
+           g_passed, g_passed + g_failed, g_failed);
+    return g_failed > 0 ? 1 : 0;
+}

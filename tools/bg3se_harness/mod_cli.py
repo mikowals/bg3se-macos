@@ -20,6 +20,30 @@ import json
 import sys
 
 
+def _resolve_uuid(uuid_or_name: str) -> str | dict:
+    """Resolve a UUID or mod name to a UUID via the mod registry.
+
+    Returns the UUID string on success, or an error dict on failure.
+    """
+    from .mod_manager.registry import load_registry
+    registry = load_registry()
+
+    if uuid_or_name in registry:
+        return uuid_or_name
+
+    lower = uuid_or_name.lower()
+    matches = [
+        u for u, e in sorted(registry.items(), key=lambda x: (x[1].get("name") or "").lower())
+        if lower in (e.get("name") or "").lower()
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        names = [registry[u].get("name", u) for u in matches]
+        return {"error": f"Ambiguous name {uuid_or_name!r}: matched {names}. Use UUID."}
+    return {"error": f"Mod not found in registry: {uuid_or_name!r}"}
+
+
 def cmd_mod(args):
     """CLI handler for mod subcommands."""
     subcmd = args.mod_command
@@ -51,13 +75,21 @@ def cmd_mod(args):
 
     elif subcmd == "enable":
         from .mod_manager.modsettings import enable_mod
-        result = enable_mod(args.name)
+        uuid = _resolve_uuid(args.name)
+        if isinstance(uuid, dict):
+            print(json.dumps(uuid, indent=2))
+            return 1
+        result = enable_mod(uuid)
         print(json.dumps(result, indent=2))
         return 0 if "error" not in result else 1
 
     elif subcmd == "disable":
         from .mod_manager.modsettings import disable_mod
-        result = disable_mod(args.name)
+        uuid = _resolve_uuid(args.name)
+        if isinstance(uuid, dict):
+            print(json.dumps(uuid, indent=2))
+            return 1
+        result = disable_mod(uuid)
         print(json.dumps(result, indent=2))
         return 0 if "error" not in result else 1
 

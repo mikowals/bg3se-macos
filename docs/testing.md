@@ -51,13 +51,52 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 125 |
-| **Tier 1 (General)** | 85 — run anytime, no save needed |
-| **Tier 2 (In-Game)** | 40 — require loaded save |
-| **Framework** | Custom Lua, registered via `BG3SE_AddTest(tier, name, fn)` |
-| **Location** | `src/lua/lua_ext.c` (C string constants) |
-| **String limit** | 4095 chars per constant (ISO C99) |
-| **Assertion lib** | 6 helpers loaded before all tests |
+| **Total tests** | 191 (66 offline + 125 in-game Lua) |
+| **Tier 0 (C unit)** | 41 — native binary, no game, CI-safe |
+| **Tier H (pytest)** | 25 — Python harness, no game, CI-safe |
+| **Tier 1 (General)** | 85 — Lua, run anytime, no save needed |
+| **Tier 2 (In-Game)** | 40 — Lua, require loaded save |
+| **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
+
+### Tier 0: Native C Unit Tests
+
+41 tests in `tests/tier0/`. Built as standalone binary `bg3se_test_tier0` via CMake.
+Tests memory-safety-critical C code without any game process.
+
+```bash
+cd build && cmake --build . --target bg3se_test_tier0 && ./bin/bg3se_test_tier0
+```
+
+| Category | Count | What it Tests |
+|----------|-------|---------------|
+| safe_memory | 17 | GPU region detection, null/edge reads, stack reads, address validation |
+| pattern_scan | 10 | parse_pattern (null, empty, simple, wildcard), find_pattern (exact, wildcard, boundaries) |
+| osiris_handles | 8 | encode/decode roundtrips, low/high type funcIndex, part4 bit 31 |
+| entity_events | 6 | MAKE_SUB_ID/SUB_ID_TYPE/SUB_ID_INDEX macro roundtrips, all types, max index |
+
+### Tier H: Python Harness Tests
+
+25 tests in `tests/harness/`. Run with pytest, no game dependency.
+
+```bash
+PYTHONPATH=tools pytest tests/harness/ -v
+```
+
+| Module | Count | What it Tests |
+|--------|-------|---------------|
+| test_test_runner | 6 | parse_test_output (SLOW token, missing summary, empty, unrelated lines), run_tests error handling |
+| test_launch | 4 | wait_for_socket lifecycle (process exit, timeout, dismiss ordering) |
+| test_cli | 5 | headless hide ordering, build pipeline failures, test process exit |
+| test_mod | 5 | name→UUID resolution (exact, substring, case-insensitive, ambiguous, not found) |
+| test_savegames | 2 | restore backup behavior (with/without existing save) |
+| test_compat | 3 | log timestamp scoping (all, filtered, future) |
+
+### Tier 1+2: Lua In-Game Tests
+
+Framework: Custom Lua, registered via `BG3SE_AddTest(tier, name, fn)`.
+Location: `src/lua/lua_ext.c` (C string constants).
+String limit: 4095 chars per constant (ISO C99).
+Assertion lib: 6 helpers loaded before all tests.
 
 ## Quick Reference
 

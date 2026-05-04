@@ -13,6 +13,36 @@ Each entry includes:
 
 ---
 
+## [v0.36.50+e2e] - 2026-05-04 — 4-Tier offline test suite + 3 bug fixes
+
+**Category:** Testing infrastructure + bug fixes | **Parity:** ~94%
+
+New offline test infrastructure: 66 tests across two tiers (C unit + Python pytest)
+that validate behavior, not just presence. Three confirmed bugs fixed with regression
+tests. CI/CD pipeline via GitHub Actions.
+
+### Added
+- **Tier 0: Native C unit tests** (41 tests) — `tests/tier0/` with CMake target
+  `bg3se_test_tier0`. Covers safe_memory (17), pattern_scan (10), osiris_handles (8),
+  entity_events (6). No game dependency, runs in CI.
+- **Tier H: Python harness tests** (25 tests) — `tests/harness/` with pytest.
+  Covers test_runner parsing, launch lifecycle, CLI commands, mod name resolution,
+  savegame backup, and log timestamp scoping.
+- **GitHub Actions CI** — `.github/workflows/test-offline.yml` runs both tiers
+  on `push` and `pull_request`.
+- **`_resolve_uuid()` in mod_cli** — name→UUID resolution via registry substring
+  match for `mod enable`/`mod disable` commands.
+
+### Fixed
+- **`mod enable <name>` passed name to UUID-expecting function** — now resolves
+  via registry substring match (same pattern as `uninstall()`).
+- **`savegames.restore()` destroyed existing saves** — now moves to timestamped
+  backup directory before overwriting.
+- **`compat._scan_log_for_mod()` matched stale log entries** — now accepts
+  `since_timestamp` parameter; `vet` caller passes report start time.
+
+---
+
 ## [v0.36.50+compat] - 2026-04-29 — BG3MacModManager compatibility + SE mod vetting
 
 **Category:** Harness tooling + C parser fix | **Parity:** ~94%

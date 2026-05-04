@@ -367,7 +367,10 @@ def vet_mod(source, no_launch=False, output_path=None):
         return report
 
     # Step 4: Parse latest log for errors related to this mod
-    log_errors, log_warnings = _scan_log_for_mod(report.get("mod_name", ""))
+    log_errors, log_warnings = _scan_log_for_mod(
+        report.get("mod_name", ""),
+        since_timestamp=report["timestamp"].replace("T", " "),
+    )
     report["errors"].extend(log_errors)
     report["warnings"].extend(log_warnings)
 
@@ -410,8 +413,12 @@ def _read_se_version():
     return "unknown"
 
 
-def _scan_log_for_mod(mod_name):
-    """Scan latest.log for errors/warnings mentioning a mod."""
+def _scan_log_for_mod(mod_name, since_timestamp=None):
+    """Scan latest.log for errors/warnings mentioning a mod.
+
+    If *since_timestamp* is given (ISO format "YYYY-MM-DD HH:MM:SS"), only
+    lines with timestamps at or after that value are considered.
+    """
     errors = []
     warnings = []
     if not mod_name:
@@ -424,6 +431,12 @@ def _scan_log_for_mod(mod_name):
         lines = log_path.read_text(errors="replace").splitlines()
         mod_lower = mod_name.lower()
         for line in lines[-500:]:
+            if since_timestamp and line.startswith("["):
+                ts_end = line.find("]")
+                if ts_end > 1:
+                    line_ts = line[1:ts_end].split(".")[0]
+                    if line_ts < since_timestamp:
+                        continue
             lower = line.lower()
             if mod_lower and mod_lower not in lower:
                 continue
