@@ -13,13 +13,14 @@ Each entry includes:
 
 ---
 
-## [v0.36.50+e2e] - 2026-05-04 — 4-Tier offline test suite + 3 bug fixes
+## [v0.36.50+e2e] - 2026-05-04 — 4-Tier test suite + observability APIs + 3 bug fixes
 
-**Category:** Testing infrastructure + bug fixes | **Parity:** ~94%
+**Category:** Testing infrastructure + debug APIs + bug fixes | **Parity:** ~94%
 
-New offline test infrastructure: 66 tests across two tiers (C unit + Python pytest)
-that validate behavior, not just presence. Three confirmed bugs fixed with regression
-tests. CI/CD pipeline via GitHub Actions.
+Full 4-tier test architecture: 213 total tests. 66 offline (C + pytest), 147 in-game
+Lua (93 Tier 1 + 54 Tier 2) including 22 new behavioral parity tests. Five debug
+observability APIs expose C-layer internals to Lua. Three confirmed bugs fixed with
+regression tests. CI/CD pipeline via GitHub Actions.
 
 ### Added
 - **Tier 0: Native C unit tests** (41 tests) — `tests/tier0/` with CMake target
@@ -28,8 +29,18 @@ tests. CI/CD pipeline via GitHub Actions.
 - **Tier H: Python harness tests** (25 tests) — `tests/harness/` with pytest.
   Covers test_runner parsing, launch lifecycle, CLI commands, mod name resolution,
   savegame backup, and log timestamp scoping.
-- **GitHub Actions CI** — `.github/workflows/test-offline.yml` runs both tiers
-  on `push` and `pull_request`.
+- **Tier 1 parity tests** (8 tests) — Behavioral tests: SafeMemoryEdges,
+  FunctorSubscribePair, PriorityOncePrevent, Stats.GetBehavior, Stats.GetAllReturnsData,
+  Timer.WaitForCancel, Audio.PlayExternalSoundEdge, Types.SerializeRoundtrip.
+- **Tier 2 parity tests** (14 tests) — In-game behavioral tests: Entity roundtrips
+  (Host, Handle, InvalidInputs, ComponentEnumeration, TypeIdDiscovery, RegistryCounts,
+  HealthLayoutSnapshot), Stats (CanonicalCounts, LongswordShape), Osi (DBPlayers,
+  ListenerBeforeAfter), Level.RaycastShape, IMGUI.WidgetSurface, Net.PostMessage.
+- **5 debug observability APIs** — `Ext.Debug.GetHookStatus()`,
+  `Ext.Debug.GetVersionStatus()`, `Ext.Debug.GetCacheStats()`,
+  `Ext.Debug.GetEventStatus()`, `Ext.Debug.GetManagerStatus()`.
+- **GitHub Actions CI** — `.github/workflows/test-offline.yml` runs both offline
+  tiers on `push` and `pull_request`.
 - **`_resolve_uuid()` in mod_cli** — name→UUID resolution via registry substring
   match for `mod enable`/`mod disable` commands.
 

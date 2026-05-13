@@ -14,6 +14,11 @@ HASH_FILE = BG3_APP_BUNDLE / "Contents/MacOS/.bg3se-patch-hash"
 INSERT_DYLIB = PROJECT_ROOT / "tools/vendor/insert_dylib/insert_dylib_bin"
 DYLIB_INSTALL_NAME = "@loader_path/libbg3se.dylib"
 
+# Harness process tracking
+PID_FILE = Path("/tmp/bg3se_harness.pid")
+HEALTH_FILE = Path("/tmp/bg3se_health.json")
+MONITOR_LOG = Path("/tmp/bg3se_monitor.log")
+
 # Mod management paths
 LARIAN_LOCAL = Path.home() / "Documents/Larian Studios/Baldur's Gate 3"
 MODS_DIR = LARIAN_LOCAL / "Mods"

@@ -16,6 +16,7 @@
 #include "../lifetime/lifetime.h"
 #include "../entity/component_typeid.h"
 #include "../osiris/osiris_functions.h"
+#include "../input/focusless_input.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -649,6 +650,7 @@ static void socket_process_client(lua_State *L, int slot) {
             if (*client_len > 0) {
                 client_buf[*client_len] = '\0';
                 process_line(L, client_buf, slot);
+                focusless_input_mark_socket_ready();
                 socket_send_prompt(slot);
                 *client_len = 0;
             }

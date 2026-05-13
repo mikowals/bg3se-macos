@@ -652,19 +652,15 @@ tell application "Baldur's Gate 3" to activate
 
 
 def _try_dismiss_splash(attempt, pid=None):
-    """Send CGEvent key to dismiss the splash screen.
+    """Send Escape+Space to dismiss splash (skip Bink videos + press-any-key).
 
-    When *pid* is provided, tries the background (no-focus-steal) method
-    first via CGEventPostToPid. Falls back to the aggressive
-    focus-stealing path if PID targeting is unavailable or fails.
+    Always uses the aggressive (focus-stealing) method because BG3 must
+    be visible and focused during boot for Metal to initialize. The
+    "headless-after-boot" pattern hides only after the socket responds.
     """
     try:
-        if pid:
-            from .menu import dismiss_splash_background
-            result = dismiss_splash_background(pid)
-        else:
-            from .menu import dismiss_splash_aggressive
-            result = dismiss_splash_aggressive()
+        from .menu import dismiss_splash_aggressive
+        result = dismiss_splash_aggressive()
 
         if result.get("success"):
             method = result.get("method", "unknown")

@@ -82,6 +82,8 @@ static struct {
     bool valid;
 } s_cgevent_mouse = {0, 0, false};
 
+static bool s_first_drawable_seen = false;
+
 // ============================================================================
 // Forward Declarations
 // ============================================================================
@@ -216,6 +218,7 @@ static id<CAMetalDrawable> hooked_nextDrawable(id self, SEL _cmd) {
     // First time seeing a Metal layer - capture device and defer ImGui init
     if (s_state.state == IMGUI_METAL_STATE_WAITING_FOR_DEVICE) {
         if (!s_state.device && layer.device) {
+            s_first_drawable_seen = true;
             s_state.device = layer.device;
             s_state.gameLayer = layer;
 
@@ -1223,6 +1226,10 @@ void imgui_metal_shutdown(void) {
 
 bool imgui_metal_is_ready(void) {
     return s_state.state == IMGUI_METAL_STATE_READY;
+}
+
+bool imgui_metal_first_drawable_seen(void) {
+    return s_first_drawable_seen;
 }
 
 ImguiMetalState imgui_metal_get_state(void) {

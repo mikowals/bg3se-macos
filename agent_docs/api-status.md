@@ -14,7 +14,7 @@ Full namespace-by-namespace parity status with Windows BG3SE.
 - **Ext.Resource** - Non-GUID resources (34 types: Visual, Material, Texture, Dialog, etc.)
 - **Ext.Template** - Game object templates (14 functions, 10 properties, type detection via VMT)
 - **Ext.Types** - Full reflection API (9 functions including **GenerateIdeHelpers**): GetAllTypes (~2050), GetTypeInfo, GetObjectType, TypeOf, IsA, Validate, GetComponentLayout, GetAllLayouts, GenerateIdeHelpers (VS Code IntelliSense)
-- **Ext.Debug** - Memory introspection (ReadPtr, ProbeStruct, HexDump), **mod diagnostics** (ModHealthCount, ModHealthAll, ModDisable)
+- **Ext.Debug** - Memory introspection (ReadPtr, ProbeStruct, HexDump), **mod diagnostics** (ModHealthCount, ModHealthAll, ModDisable), **observability APIs** (GetHookStatus, GetVersionStatus, GetCacheStats, GetEventStatus, GetManagerStatus)
 - **Ext.IMGUI** - **Complete widget system** (40 widget types): NewWindow, AddText, AddButton, AddCheckbox, AddInputText, AddCombo, AddSlider, AddColorEdit, AddProgressBar, AddTree, AddTable, AddTabBar, AddMenu, handle-based objects, event callbacks (OnClick, OnChange, OnClose, OnExpand, OnCollapse)
 - **Ext.Mod** - Mod information (5 functions): IsModLoaded, GetLoadOrder, GetMod, GetBaseMod, GetModManager
 - **Ext.Level** - **15 functions**: RaycastClosest, RaycastAny, **RaycastAll**, TestBox, TestSphere, GetHeightsAt, GetCurrentLevel, GetPhysicsScene, GetAiGrid, IsReady, **SweepClosest** (Sphere, Capsule, Box), **SweepAll** (Sphere, Capsule, Box)

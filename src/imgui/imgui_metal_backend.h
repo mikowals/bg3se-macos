@@ -55,6 +55,13 @@ void imgui_metal_shutdown(void);
 bool imgui_metal_is_ready(void);
 
 /**
+ * Check if the first Metal drawable has been seen.
+ * True once hooked_nextDrawable captures a device — indicates the game's
+ * Metal renderer is active and AppKit windows exist.
+ */
+bool imgui_metal_first_drawable_seen(void);
+
+/**
  * Get the current state of the Metal backend.
  *
  * @return Current initialization state

@@ -84,6 +84,32 @@ PYTHONPATH=tools python3 -m bg3se_harness ghidra decompile <name|0xADDR>  # Ghid
 
 Uses `insert_dylib` for injection + `defaults write com.larian.bg3 NoLauncher 1` for launcher bypass. Intro videos are skipped by default on `launch`/`test` (opt out with `--no-skip-videos`). See `docs/harness.md` for full docs.
 
+## Game Input via osascript
+
+Claude can send keypresses and clicks to BG3 via AppleScript — useful for navigating the "press any key" screen, main menu, and other UI that the socket can't control.
+
+```bash
+# Send spacebar (e.g., dismiss "press any key")
+osascript -e 'tell application "System Events" to tell process "Baldur'"'"'s Gate 3" to keystroke " "'
+
+# Send Escape
+osascript -e 'tell application "System Events" to tell process "Baldur'"'"'s Gate 3" to key code 53'
+
+# Send Return
+osascript -e 'tell application "System Events" to tell process "Baldur'"'"'s Gate 3" to keystroke return'
+```
+
+Requires Accessibility permission (checked by `doctor`). Works alongside `menu detect`/`menu click` (Vision OCR + CGEvent) for button-level automation.
+
+**Semi-headless mode:** Hide BG3 after launch so it runs in the background while Claude operates via socket:
+```bash
+# Hide BG3 (still renders, but out of the way)
+osascript -e 'tell application "System Events" to set visible of process "Baldur'"'"'s Gate 3" to false'
+
+# Bring it back when needed (e.g., for screenshots)
+osascript -e 'tell application "System Events" to set visible of process "Baldur'"'"'s Gate 3" to true'
+```
+
 ## Commands (Legacy)
 
 ```bash
@@ -170,7 +196,7 @@ tail -f "/Users/tomdimino/Library/Application Support/BG3SE/logs/latest.log"
 ls "/Users/tomdimino/Library/Application Support/BG3SE/logs/"
 ```
 
-Use `!test` to run Tier 1 regression tests (85 tests, always works). Use `!test_ingame` for Tier 2 tests (40 tests, needs loaded save). Use `Debug.*` helpers for memory probing.
+Use `!test` to run Tier 1 regression tests (93 tests, always works). Use `!test_ingame` for Tier 2 tests (54 tests, needs loaded save). Use `Debug.*` helpers for memory probing. 66 offline tests (41 C + 25 pytest) run via CI.
 
 ## Reverse Engineering
 

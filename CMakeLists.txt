@@ -189,7 +189,10 @@ add_library(bg3se SHARED
     src/lua/lua_persistentvars.c
     src/lua/lua_events.c
     src/game/game_state.c
+    src/game/global_switches.c
+    src/game/video_skip.c
     src/input/input_hooks.m
+    src/input/focusless_input.m
     src/input/lua_input.c
     src/math/math_ext.c
     src/math/lua_math.c

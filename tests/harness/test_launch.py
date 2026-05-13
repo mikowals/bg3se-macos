@@ -47,7 +47,7 @@ def test_wait_for_socket_dismiss_called_after_delay(monkeypatch):
     monkeypatch.setattr(launch.time, "sleep", lambda _: None)
     monkeypatch.setattr(
         launch, "_try_dismiss_splash",
-        lambda n: calls.append(("dismiss", n)),
+        lambda n, pid=None: calls.append(("dismiss", n)),
     )
 
     class NoSocket:
@@ -68,7 +68,7 @@ def test_wait_for_socket_no_dismiss_when_disabled(monkeypatch):
     monkeypatch.setattr(launch.time, "sleep", lambda _: None)
     monkeypatch.setattr(
         launch, "_try_dismiss_splash",
-        lambda n: calls.append(("dismiss", n)),
+        lambda n, pid=None: calls.append(("dismiss", n)),
     )
 
     class NoSocket:

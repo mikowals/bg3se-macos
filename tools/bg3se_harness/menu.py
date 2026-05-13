@@ -120,6 +120,56 @@ def cg_key(keycode):
     return True
 
 
+def cg_key_to_pid(pid: int, keycode: int) -> dict:
+    """Send a key press to a specific process by PID (no focus required).
+
+    Uses the deprecated CGEventPostToPid() which targets a process directly
+    instead of posting to the system HID stream (frontmost app only).
+    """
+    qs = _get_appservices()
+
+    qs.CGEventCreateKeyboardEvent.restype = ctypes.c_void_p
+    qs.CGEventCreateKeyboardEvent.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint16, ctypes.c_bool,
+    ]
+    qs.CGEventPostToPid.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+    qs.CFRelease.argtypes = [ctypes.c_void_p]
+
+    ev_down = qs.CGEventCreateKeyboardEvent(None, keycode, True)
+    ev_up = qs.CGEventCreateKeyboardEvent(None, keycode, False)
+    if not ev_down or not ev_up:
+        if ev_down:
+            qs.CFRelease(ev_down)
+        if ev_up:
+            qs.CFRelease(ev_up)
+        return {"success": False, "method": "CGEventPostToPid",
+                "error": "failed to create keyboard event"}
+
+    try:
+        qs.CGEventPostToPid(pid, ev_down)
+        time.sleep(0.05)
+        qs.CGEventPostToPid(pid, ev_up)
+    except (OSError, ctypes.ArgumentError) as exc:
+        qs.CFRelease(ev_down)
+        qs.CFRelease(ev_up)
+        return {"success": False, "method": "CGEventPostToPid",
+                "error": str(exc)}
+
+    qs.CFRelease(ev_down)
+    qs.CFRelease(ev_up)
+    return {"success": True, "method": "CGEventPostToPid"}
+
+
+def dismiss_splash_background(pid: int) -> dict:
+    """Dismiss BG3 splash screen without stealing focus.
+
+    Sends Space key directly to the BG3 process via CGEventPostToPid.
+    Never falls back to the aggressive method — headless/background mode
+    must not broadcast keys to the system HID tap.
+    """
+    return cg_key_to_pid(pid, _kVK_Space)
+
+
 def dismiss_splash_aggressive():
     """Dismiss the BG3 splash screen via CGEvent Space key.
 

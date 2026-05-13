@@ -51,11 +51,11 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 191 (66 offline + 125 in-game Lua) |
+| **Total tests** | 213 (66 offline + 147 in-game Lua) |
 | **Tier 0 (C unit)** | 41 — native binary, no game, CI-safe |
 | **Tier H (pytest)** | 25 — Python harness, no game, CI-safe |
-| **Tier 1 (General)** | 85 — Lua, run anytime, no save needed |
-| **Tier 2 (In-Game)** | 40 — Lua, require loaded save |
+| **Tier 1 (General)** | 93 — Lua, run anytime, no save needed (+8 parity) |
+| **Tier 2 (In-Game)** | 54 — Lua, require loaded save (+14 parity) |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
 
 ### Tier 0: Native C Unit Tests

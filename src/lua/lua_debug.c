@@ -9,7 +9,11 @@
 #include "lua_events.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
+#include "../core/version_detect.h"
 #include "../strings/fixed_string.h"
+#include "../osiris/osiris_functions.h"
+#include "../entity/entity_events.h"
+#include "../stats/stats_manager.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -774,6 +778,72 @@ static int lua_debug_reset(lua_State *L) {
 }
 
 // ============================================================================
+// Observability APIs (Phase 4)
+// ============================================================================
+
+extern int bg3se_get_hook_count(void);
+extern int bg3se_get_hooks_fired(void);
+
+static int lua_debug_get_hook_status(lua_State *L) {
+    lua_newtable(L);
+    lua_pushinteger(L, bg3se_get_hook_count());
+    lua_setfield(L, -2, "hook_count");
+    lua_pushinteger(L, bg3se_get_hooks_fired());
+    lua_setfield(L, -2, "hooks_fired");
+    lua_pushboolean(L, !version_detect_addresses_safe());
+    lua_setfield(L, -2, "version_gated");
+    return 1;
+}
+
+static int lua_debug_get_version_status(lua_State *L) {
+    lua_newtable(L);
+    const char *ver = version_detect_get_version();
+    lua_pushstring(L, ver ? ver : "unknown");
+    lua_setfield(L, -2, "game_version");
+    lua_pushstring(L, BG3_KNOWN_VERSION);
+    lua_setfield(L, -2, "expected_version");
+    lua_pushboolean(L, version_detect_matches());
+    lua_setfield(L, -2, "matches");
+    lua_pushboolean(L, version_detect_addresses_safe());
+    lua_setfield(L, -2, "sentinels_passed");
+    return 1;
+}
+
+static int lua_debug_get_cache_stats(lua_State *L) {
+    lua_newtable(L);
+    lua_pushinteger(L, osi_func_get_cache_count());
+    lua_setfield(L, -2, "function_count");
+    lua_pushinteger(L, osi_func_get_seen_count());
+    lua_setfield(L, -2, "seen_count");
+    return 1;
+}
+
+static int lua_debug_get_event_status(lua_State *L) {
+    lua_newtable(L);
+    lua_pushinteger(L, entity_events_subscription_count());
+    lua_setfield(L, -2, "subscriber_count");
+    lua_pushboolean(L, entity_events_is_bound());
+    lua_setfield(L, -2, "bound");
+    return 1;
+}
+
+static int lua_debug_get_manager_status(lua_State *L) {
+    lua_newtable(L);
+    lua_pushboolean(L, stats_manager_ready());
+    lua_setfield(L, -2, "prototype_ready");
+    if (stats_manager_ready()) {
+        int count = 0;
+        const char **names = stats_get_all_names_filtered(NULL, &count);
+        lua_pushinteger(L, count);
+        if (names) free(names);
+    } else {
+        lua_pushinteger(L, 0);
+    }
+    lua_setfield(L, -2, "stat_count");
+    return 1;
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
@@ -870,6 +940,22 @@ void lua_ext_register_debug(lua_State *L, int ext_table_index) {
 
     lua_pushcfunction(L, lua_debug_reset);
     lua_setfield(L, -2, "Reset");
+
+    // Observability APIs (Phase 4)
+    lua_pushcfunction(L, lua_debug_get_hook_status);
+    lua_setfield(L, -2, "GetHookStatus");
+
+    lua_pushcfunction(L, lua_debug_get_version_status);
+    lua_setfield(L, -2, "GetVersionStatus");
+
+    lua_pushcfunction(L, lua_debug_get_cache_stats);
+    lua_setfield(L, -2, "GetCacheStats");
+
+    lua_pushcfunction(L, lua_debug_get_event_status);
+    lua_setfield(L, -2, "GetEventStatus");
+
+    lua_pushcfunction(L, lua_debug_get_manager_status);
+    lua_setfield(L, -2, "GetManagerStatus");
 
     // Set Ext.Debug = table
     lua_setfield(L, ext_table_index, "Debug");
