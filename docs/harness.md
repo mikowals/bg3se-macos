@@ -34,8 +34,8 @@ tooling.
 | `build` | Build dylib via cmake, verify universal binary, deploy to Steam folder |
 | `patch` | Inject libbg3se.dylib into BG3 binary via insert_dylib |
 | `unpatch` | Restore original BG3 binary from backup |
-| `launch [--continue\|--save NAME] [--no-skip-videos]` | Build + patch + launch + socket health check; skips intro videos by default |
-| `test [filter] [--no-skip-videos]` | Tier 1 regression tests, output structured JSON; skips intro videos by default |
+| `launch [--continue\|--save NAME] [--headless] [--no-skip-videos]` | Build + patch + launch + socket health check; skips intro videos by default |
+| `test [filter] [--headless] [--no-skip-videos]` | Tier 1 regression tests, output structured JSON; skips intro videos by default |
 | `test --tier 2 [filter]` | Tier 2 in-game tests (requires loaded save) |
 | `run "<lua>"` | Send inline Lua to the running game via socket |
 | `eval script.lua` | Run a Lua file (stdin `-` for piping) |
@@ -216,6 +216,8 @@ tools/bg3se_harness/
 **Binary not patched after game update:** Run `patch` again—it detects the hash change and re-patches from the updated binary.
 
 **Socket timeout:** The health check polls `/tmp/bg3se.sock` for 30s. If BG3 is slow to start, use `--timeout 60`.
+
+**Headless mode (`--headless`):** On macOS this is a temporary windowed launch plus app hide, not renderer-level headless mode. Fullscreen BG3 creates its own macOS Space, which System Events cannot reliably escape while the game is creating video and Metal windows. For headless launches, the harness snapshots `graphicSettings.lsx`, temporarily writes normal windowed settings (`Fullscreen=0`, fake fullscreen off, `1280x720`), starts BG3, hides the normal app window, then restores the original graphics file so later manual launches keep the user's display mode. A brief window flash can still happen during boot. JSON output includes the hide result and `graphics_restore`; failures attempt restore before returning.
 
 **Codesign warnings:** Ad-hoc signing may warn about subcomponents (log files in MacOS/). These are harmless—the binary itself is signed correctly.
 

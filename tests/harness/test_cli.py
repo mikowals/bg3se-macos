@@ -29,7 +29,7 @@ def test_cmd_launch_headless_hides_after_socket(monkeypatch, capsys):
     _stub_patch(monkeypatch)
     monkeypatch.setattr(
         cli.launch_mod, "launch",
-        lambda **k: (calls.append("launch") or SimpleNamespace(pid=123, poll=lambda: None)),
+        lambda **k: (calls.append(("launch", k)) or SimpleNamespace(pid=123, poll=lambda: None)),
     )
     monkeypatch.setattr(cli.launch_mod, "default_timeout", lambda *a: 1)
     monkeypatch.setattr(
@@ -39,6 +39,10 @@ def test_cmd_launch_headless_hides_after_socket(monkeypatch, capsys):
     monkeypatch.setattr(
         cli.launch_mod, "hide_window",
         lambda: (calls.append("hide") or {"success": True}),
+    )
+    monkeypatch.setattr(
+        cli.launch_mod, "restore_headless_graphics",
+        lambda **k: (calls.append(("restore", k)) or {"success": True}),
     )
 
     args = argparse.Namespace(
@@ -53,6 +57,9 @@ def test_cmd_launch_headless_hides_after_socket(monkeypatch, capsys):
     assert "wait" in calls
     assert "hide" in calls
     assert calls.index("wait") < calls.index("hide")
+    launch_call = next(item for item in calls if isinstance(item, tuple) and item[0] == "launch")
+    assert launch_call[1]["headless"] is True
+    assert any(item for item in calls if isinstance(item, tuple) and item[0] == "restore")
 
 
 def test_cmd_launch_headless_does_not_hide_on_socket_failure(monkeypatch, capsys):
@@ -71,6 +78,10 @@ def test_cmd_launch_headless_does_not_hide_on_socket_failure(monkeypatch, capsys
         cli.launch_mod, "hide_window",
         lambda: pytest.fail("hide_window should not be called"),
     )
+    monkeypatch.setattr(
+        cli.launch_mod, "restore_headless_graphics",
+        lambda **k: {"success": True},
+    )
 
     args = argparse.Namespace(
         headless=True, timeout=1, continue_game=False, save=None,
@@ -81,6 +92,45 @@ def test_cmd_launch_headless_does_not_hide_on_socket_failure(monkeypatch, capsys
     )
     rc = cli.cmd_launch(args)
     assert rc == 1
+
+
+def test_cmd_test_headless_passes_headless_and_restores_after_hide(monkeypatch, capsys):
+    calls = []
+
+    _stub_build_deploy(monkeypatch)
+    _stub_patch(monkeypatch)
+    monkeypatch.setattr(
+        cli.launch_mod, "launch",
+        lambda **k: (calls.append(("launch", k)) or SimpleNamespace(pid=55, poll=lambda: None)),
+    )
+    monkeypatch.setattr(cli.launch_mod, "default_timeout", lambda *a: 1)
+    monkeypatch.setattr(
+        cli.launch_mod, "wait_for_socket",
+        lambda **k: {"socket_connected": True, "elapsed_ms": 500},
+    )
+    monkeypatch.setattr(
+        cli.launch_mod, "hide_window",
+        lambda: (calls.append("hide") or {"success": True}),
+    )
+    monkeypatch.setattr(
+        cli.launch_mod, "restore_headless_graphics",
+        lambda **k: (calls.append(("restore", k)) or {"success": True}),
+    )
+    monkeypatch.setattr(cli, "run_tests", lambda **k: {"all_passed": True})
+
+    args = argparse.Namespace(
+        headless=True, tier=1, filter=None, continue_game=True, save=None,
+        skip_videos=True, storylog=False, stats=False, json_mode=False,
+        osi_debug=False, syslog=False, modded=False, controller=False,
+        ecb_checker=False, module=None, detail_level=None, log_path=None,
+        flags=None,
+    )
+    rc = cli.cmd_test(args)
+    assert rc == 0
+    launch_call = next(item for item in calls if isinstance(item, tuple) and item[0] == "launch")
+    assert launch_call[1]["headless"] is True
+    assert "hide" in calls
+    assert any(item for item in calls if isinstance(item, tuple) and item[0] == "restore")
 
 
 # ── cmd_build ────────────────────────────────────────────────────────

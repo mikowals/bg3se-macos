@@ -97,9 +97,12 @@ extern "C" {
 
 // Game state tracking
 #include "game_state.h"
+#include "global_switches.h"
+#include "video_skip.h"
 
 // Input system
 #include "input.h"
+#include "focusless_input.h"
 
 // Math library
 #include "math_ext.h"
@@ -183,6 +186,10 @@ static void *orig_Event = NULL;
 static int initGame_call_count = 0;
 static int load_call_count = 0;
 static int event_call_count = 0;
+
+int bg3se_get_hooks_fired(void) {
+    return initGame_call_count + load_call_count + event_call_count;
+}
 
 // ============================================================================
 // Osiris Runtime State
@@ -314,6 +321,9 @@ static KnownFunction g_knownFunctions[] = {
 
 // Track if hooks are already installed
 static int hooks_installed = 0;
+static int g_installed_hook_count = 0;
+
+int bg3se_get_hook_count(void) { return g_installed_hook_count; }
 
 // ============================================================================
 // ARM64 Pattern Database for Fallback Symbol Resolution
@@ -2142,6 +2152,15 @@ static void init_lua(void) {
     t1 = (uint64_t)timer_get_monotonic_ms();
     LOG_LUA_INFO("  input_init + overlay: %llums", (unsigned long long)(t1 - t0));
 
+    // Initialize focusless input (in-process NSEvent injection for headless harness)
+    focusless_input_init();
+    {
+        const char *auto_dismiss = getenv("BG3SE_AUTO_DISMISS_SPLASH");
+        if (auto_dismiss && auto_dismiss[0] && auto_dismiss[0] != '0') {
+            focusless_input_start_splash_autodismiss(120.0, 2.0);
+        }
+    }
+
     // Register Ext.Math namespace
     lua_getglobal(L, "Ext");
     if (lua_istable(L, -1)) {
@@ -3259,6 +3278,7 @@ static void install_hooks(void) {
         LOG_HOOKS_WARN(" RegisterDIVFunctions not found — Osiris calls will use InternalCall fallback (may crash!)");
     }
 
+    g_installed_hook_count = hook_count;
     LOG_HOOKS_INFO("Hooks installed: %d/4", hook_count);
     hooks_installed = 1;
 
@@ -3342,9 +3362,19 @@ init_subsystems:
                     audio_manager_init(binary_base);
                     LOG_CORE_INFO("Audio manager initialized");
 
+                    // Mute audio in headless mode (env set by harness)
+                    if (getenv("BG3SE_MUTE_AUDIO")) {
+                        if (audio_pause_all()) {
+                            LOG_CORE_INFO("Audio muted (BG3SE_MUTE_AUDIO=1)");
+                        }
+                    }
+
                     // Initialize localization system
                     localization_init(binary_base);
                     LOG_CORE_INFO("Localization system initialized");
+
+                    // Initialize video skip hook (suppresses Bink intro videos)
+                    video_skip_init(binary_base);
 
                     // Initialize functor hooks (ExecuteFunctor/AfterExecuteFunctor events)
                     // IMPORTANT: Functor hooks use Dobby to patch CODE at specific addresses.

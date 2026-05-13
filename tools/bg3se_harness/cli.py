@@ -151,6 +151,8 @@ def cmd_unpatch(args):
 def cmd_launch(args):
     continue_game = getattr(args, "continue_game", False)
     load_save = getattr(args, "save", None)
+    background = getattr(args, "background", False)
+    headless = getattr(args, "headless", False)
 
     try:
         extra_flags = _collect_extra_flags(args)
@@ -186,19 +188,72 @@ def cmd_launch(args):
         load_save=load_save,
         extra_flags=extra_flags,
         skip_videos=skip_videos,
+        headless=headless,
     )
 
-    # Health check — also dismisses splash screen via CGEvent
-    print("Waiting for SE socket...", file=sys.stderr)
     timeout = getattr(args, "timeout", None)
     if timeout is None:
         timeout = launch_mod.default_timeout(continue_game, load_save)
-    health = launch_mod.wait_for_socket(timeout=timeout, dismiss_splash=True)
+
+    auto_dismiss = getattr(args, "auto_dismiss", True)
+
+    if background:
+        import subprocess as _sp
+        _sp.Popen(
+            [sys.executable, "-m", "bg3se_harness._monitor",
+             str(proc.pid), str(timeout), "1" if headless else "0",
+             "1" if skip_videos else "0", "1" if auto_dismiss else "0"],
+            stdin=_sp.DEVNULL, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+            start_new_session=True,
+        )
+        from .config import MONITOR_LOG
+        result = {
+            "launched": True,
+            "pid": proc.pid,
+            "background": True,
+            "health_file": str(launch_mod.HEALTH_FILE),
+            "monitor_log": str(MONITOR_LOG),
+            "patch": pr,
+            "continue_game": continue_game,
+        }
+        if load_save:
+            result["load_save"] = load_save
+        print(json.dumps(result, indent=2))
+        return 0
+
+    # Foreground: block until socket responds
+    print("Waiting for SE socket...", file=sys.stderr)
+    health = launch_mod.wait_for_socket(
+        timeout=timeout, dismiss_splash=True, process=proc,
+    )
     health["pid"] = proc.pid
     health["patch"] = pr
     health["continue_game"] = continue_game
     if load_save:
         health["load_save"] = load_save
+
+    if headless:
+        if health.get("socket_connected"):
+            hide_result = launch_mod.hide_window()
+            restore_result = launch_mod.restore_headless_graphics(
+                reason="foreground_hide_complete",
+            )
+            health["headless"] = {
+                "requested": True,
+                "hidden": hide_result.get("success", False),
+                **hide_result,
+                "graphics_restore": restore_result,
+            }
+        else:
+            restore_result = launch_mod.restore_headless_graphics(
+                reason="foreground_socket_not_connected",
+            )
+            health["headless"] = {
+                "requested": True,
+                "hidden": False,
+                "reason": "socket_not_connected",
+                "graphics_restore": restore_result,
+            }
 
     print(json.dumps(health, indent=2))
     return 0 if health.get("socket_connected") else 1
@@ -207,6 +262,7 @@ def cmd_launch(args):
 def cmd_test(args):
     continue_game = getattr(args, "continue_game", True)  # default: auto-continue
     load_save = getattr(args, "save", None)
+    headless = getattr(args, "headless", False)
 
     try:
         extra_flags = _collect_extra_flags(args)
@@ -242,17 +298,42 @@ def cmd_test(args):
         load_save=load_save,
         extra_flags=extra_flags,
         skip_videos=skip_videos,
+        headless=headless,
     )
 
-    # Wait for socket — also dismisses splash screen via CGEvent
+    # Wait for socket — dismisses splash screen via CGEvent while BG3 is visible
     print("Waiting for SE socket...", file=sys.stderr)
     timeout = launch_mod.default_timeout(continue_game, load_save)
-    health = launch_mod.wait_for_socket(timeout=timeout, dismiss_splash=True)
+    health = launch_mod.wait_for_socket(
+        timeout=timeout, dismiss_splash=True, process=proc,
+    )
     if not health.get("socket_connected"):
-        health["stage"] = "health"
+        health["stage"] = health.get("stage", "health")
         health["pid"] = proc.pid
+        if headless:
+            health["headless"] = {
+                "requested": True,
+                "hidden": False,
+                "reason": "socket_not_connected",
+                "graphics_restore": launch_mod.restore_headless_graphics(
+                    reason="test_socket_not_connected",
+                ),
+            }
         print(json.dumps(health, indent=2))
         return 1
+
+    headless_result = None
+    if headless:
+        hide_result = launch_mod.hide_window()
+        restore_result = launch_mod.restore_headless_graphics(
+            reason="test_hide_complete",
+        )
+        headless_result = {
+            "requested": True,
+            "hidden": hide_result.get("success", False),
+            **hide_result,
+            "graphics_restore": restore_result,
+        }
 
     # Run tests
     print("Running tests...", file=sys.stderr)
@@ -266,6 +347,8 @@ def cmd_test(args):
         "continue_game": continue_game,
         "socket_elapsed_ms": health.get("elapsed_ms"),
     }
+    if headless_result:
+        output["launch"]["headless"] = headless_result
     print(json.dumps(output, indent=2))
     return 0 if result.get("all_passed") else 1
 
@@ -288,8 +371,23 @@ def cmd_status(args):
         "patched": patch_mod.is_patched(),
         "backup_exists": patch_mod._backup_path().exists(),
     }
+    health = launch_mod.read_health_file()
+    if health:
+        result["health"] = health
     print(json.dumps(result, indent=2))
     return 0
+
+
+def cmd_boot_log(args):
+    """Print the background monitor boot log."""
+    from .config import MONITOR_LOG
+    try:
+        text = MONITOR_LOG.read_text()
+        print(text, end="")
+        return 0
+    except FileNotFoundError:
+        print(json.dumps({"error": "No boot log found. Run launch --background first."}))
+        return 1
 
 
 def cmd_quit(args):
@@ -407,6 +505,9 @@ def main():
     # launch
     p_launch = sub.add_parser("launch", help="Build, patch, launch, and health-check")
     p_launch.add_argument("--timeout", type=int, help="Socket health check timeout (seconds)")
+    p_launch.add_argument("--headless", action="store_true", help="Hide BG3 window after socket connects")
+    p_launch.add_argument("--background", action="store_true",
+                          help="Return immediately after launch; monitor socket in background")
     _add_launch_flags(p_launch)
 
     # test
@@ -415,6 +516,7 @@ def main():
     p_test.add_argument("--tier", type=int, default=1, choices=[1, 2], help="Test tier (1=console, 2=ingame)")
     p_test.add_argument("--no-continue", dest="continue_game", action="store_false",
                          help="Don't auto-continue (stop at main menu)")
+    p_test.add_argument("--headless", action="store_true", help="Hide BG3 window after socket connects")
     _add_launch_flags(p_test)
 
     # run
@@ -425,8 +527,9 @@ def main():
     p_eval = sub.add_parser("eval", help="Execute Lua from a file or stdin in the running game")
     p_eval.add_argument("source", help="Path to .lua file, or '-' for stdin")
 
-    # status / quit
+    # status / quit / boot-log
     sub.add_parser("status", help="Check game/socket/patch status")
+    sub.add_parser("boot-log", help="Print background monitor boot log")
     p_quit = sub.add_parser("quit", help="Quit the running game")
     p_quit.add_argument("--force", action="store_true", help="Skip graceful quit, send SIGTERM immediately")
 
@@ -687,6 +790,7 @@ def main():
         "run": cmd_run,
         "eval": cmd_eval,
         "status": cmd_status,
+        "boot-log": cmd_boot_log,
         "quit": cmd_quit,
         "screenshot": cmd_screenshot,
         "entity": cmd_entity,
