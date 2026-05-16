@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .config import (
     BG3_EXEC, GRAPHIC_SETTINGS_PATH, HEALTH_TIMEOUT, HEALTH_TIMEOUT_CONTINUE,
-    HARNESS_CONFIG_DIR, HEALTH_FILE, PID_FILE, SOCKET_PATH,
+    HARNESS_CONFIG_DIR, HEALTH_FILE, PID_FILE, PROJECT_ROOT, SOCKET_PATH,
 )
 from .flags import build_flag_args
 
@@ -437,6 +437,10 @@ def launch(continue_game=False, load_save=None, extra_flags=None,
         print(f"[harness] BG3SE_AUTO_DISMISS_SPLASH=1 (in-process splash dismiss)",
               file=sys.stderr)
 
+    if headless:
+        print("[harness] headless-after-boot: BG3 visible during boot, will hide after socket ready",
+              file=sys.stderr)
+
     return proc
 
 
@@ -447,14 +451,57 @@ def default_timeout(continue_game=False, load_save=None):
     return HEALTH_TIMEOUT
 
 
-_MAX_DISMISS_ATTEMPTS = 8
+_MAX_DISMISS_ATTEMPTS = 20
+_MENU_STALL_FIRST_ACTION_S = 20.0
+_MENU_STALL_RETRY_INTERVAL_S = 12.0
+_MENU_STALL_MAX_ACTIONS = 6
+_MENU_STALL_ABORT_S = 120.0
+BOOT_RETRYABLE_STAGES = {"timeout", "menu_stalled"}
+_CONTINUE_CLICK_FRACTIONS = [
+    # Measured from .screenshots/boot-stall-1778937630.png after watching
+    # the cursor land right/below the button. Fractions are relative to the
+    # full System Events window bounds, including the macOS title bar.
+    {"x": 0.293, "y": 0.380, "label": "continue_button_center"},
+    {"x": 0.293, "y": 0.370, "label": "continue_button_upper_center"},
+    {"x": 0.293, "y": 0.390, "label": "continue_button_lower_center"},
+]
+_SPLASH_CLICK_FRACTION = {"x": 0.5, "y": 0.5, "label": "splash_center"}
+_MOD_VERIFICATION_START_FRACTIONS = [
+    # "Mod Verification" can appear after Continue when BG3 sees local mod
+    # changes. Fractions are relative to the full System Events window bounds.
+    {"x": 0.443, "y": 0.889, "label": "mod_verification_start_game_center"},
+    {"x": 0.443, "y": 0.899, "label": "mod_verification_start_game_lower_center"},
+]
+_MOD_VERIFICATION_CHECKBOX_FRACTIONS = [
+    # Right-column enable/acknowledge boxes in the Mod Verification list.
+    # Do not include the "New Mods Detected" row that BG3 already checks.
+    {"x": 0.783, "y": 0.306, "label": "mod_verification_checkbox_1"},
+    {"x": 0.783, "y": 0.381, "label": "mod_verification_checkbox_2"},
+    {"x": 0.783, "y": 0.456, "label": "mod_verification_checkbox_3"},
+    {"x": 0.783, "y": 0.531, "label": "mod_verification_checkbox_4"},
+    {"x": 0.783, "y": 0.606, "label": "mod_verification_checkbox_5"},
+    {"x": 0.783, "y": 0.681, "label": "mod_verification_checkbox_6"},
+]
+_WATCHDOG_CLICK_SEQUENCE = [
+    ("dismiss_splash", _SPLASH_CLICK_FRACTION),
+    ("click_continue", _CONTINUE_CLICK_FRACTIONS[0]),
+    ("check_mod_verification_boxes", _MOD_VERIFICATION_CHECKBOX_FRACTIONS),
+    ("click_mod_verification_start_game", _MOD_VERIFICATION_START_FRACTIONS[0]),
+    ("check_mod_verification_boxes", _MOD_VERIFICATION_CHECKBOX_FRACTIONS),
+    ("click_mod_verification_start_game", _MOD_VERIFICATION_START_FRACTIONS[1]),
+]
+
+
+def _watchdog_target_for_attempt(attempt):
+    index = min(max(attempt - 1, 0), len(_WATCHDOG_CLICK_SEQUENCE) - 1)
+    return _WATCHDOG_CLICK_SEQUENCE[index]
 
 
 def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
     """Wait for the SE socket to respond to Lua commands.
 
-    When dismiss_splash is True, periodically sends a CGEvent Space key
-    to dismiss the BG3 'Press Any Key' splash screen while waiting.
+    When dismiss_splash is True, periodically sends Escape+Space via
+    System Events key code to dismiss the BG3 splash screen while waiting.
     Dismissal stops as soon as the socket accepts a connection (splash
     is gone at that point) or after _MAX_DISMISS_ATTEMPTS, whichever
     comes first. Only returns success when the socket responds to a
@@ -470,10 +517,16 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
     interval = 0.5
     dismiss_delay = 5.0
     dismiss_interval = 3.0
+    ocr_interval = 5.0
     last_dismiss = 0.0
+    last_ocr = 0.0
     dismiss_count = 0
     socket_ever_connected = False
     log_file_detected = False
+    menu_detected = False
+    continue_sent = False
+    socket_listening_at = None
+    menu_watchdog_actions = []
     phases = []
 
     def _phase(name, detail=""):
@@ -501,6 +554,7 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
                 "exitcode": process.returncode,
                 "elapsed_ms": elapsed_ms,
                 "phases": phases,
+                "diagnostics": _collect_boot_diagnostics(),
             }
 
         elapsed = time.monotonic() - start
@@ -513,16 +567,72 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
                 log_file_detected = True
                 _phase("dylib_loaded")
 
-        if (dismiss_splash
-                and dismiss_count < _MAX_DISMISS_ATTEMPTS
-                and elapsed >= dismiss_delay):
-            since_last = elapsed - last_dismiss
-            if last_dismiss == 0 or since_last >= dismiss_interval:
-                last_dismiss = elapsed
-                dismiss_count += 1
-                bg3_pid = process.pid if process else None
-                _try_dismiss_splash(dismiss_count, pid=bg3_pid)
-                _phase("dismiss_attempt", f"#{dismiss_count} via CGEventPostToPid")
+        bg3_pid = process.pid if process else None
+
+        if socket_ever_connected:
+            stalled_for = elapsed - (socket_listening_at or elapsed)
+            should_act = (
+                dismiss_splash
+                and bg3_pid
+                and stalled_for >= _MENU_STALL_FIRST_ACTION_S
+                and len(menu_watchdog_actions) < _MENU_STALL_MAX_ACTIONS
+                and (
+                    not menu_watchdog_actions
+                    or elapsed - menu_watchdog_actions[-1].get("t", 0) >= _MENU_STALL_RETRY_INTERVAL_S
+                )
+            )
+            if should_act:
+                action = _try_watchdog_continue(bg3_pid, len(menu_watchdog_actions) + 1)
+                action["t"] = round(elapsed, 1)
+                action["stalled_for_s"] = round(stalled_for, 1)
+                menu_watchdog_actions.append(action)
+                _phase(
+                    "menu_watchdog_action",
+                    f"#{len(menu_watchdog_actions)} {action.get('method', 'unknown')}",
+                )
+                if action.get("menu_detected") and not menu_detected:
+                    menu_detected = True
+                    _phase("menu_detected", f"watchdog={action.get('buttons', [])}")
+
+            if (
+                dismiss_splash
+                and socket_ever_connected
+                and len(menu_watchdog_actions) >= _MENU_STALL_MAX_ACTIONS
+                and stalled_for >= _MENU_STALL_ABORT_S
+            ):
+                elapsed_ms = int((time.monotonic() - start) * 1000)
+                _phase("menu_stalled", f"{elapsed_ms}ms")
+                return {
+                    "socket_connected": False,
+                    "stage": "menu_stalled",
+                    "elapsed_ms": elapsed_ms,
+                    "dismiss_attempts": dismiss_count,
+                    "phases": phases,
+                    "watchdog_actions": menu_watchdog_actions,
+                    "diagnostics": _collect_boot_diagnostics(),
+                }
+
+        # State machine: menu_detected → continue_clicked → socket_waiting
+        # Splash dismiss (Esc+Space) is handled in-process by focusless_input.m
+        # via BG3SE_AUTO_DISMISS_SPLASH=1. The Python side only does OCR to
+        # detect the main menu, then sends Enter to click Continue.
+        if dismiss_splash and not menu_detected:
+            if elapsed >= dismiss_delay and (elapsed - last_ocr) >= ocr_interval:
+                last_ocr = elapsed
+                found, buttons = _detect_main_menu()
+                if found:
+                    menu_detected = True
+                    _phase("menu_detected", f"buttons={buttons}")
+
+        if menu_detected and not continue_sent:
+            # In-process CGEventPostToPid/NSApp sendEvent can't reach
+            # BG3's custom Metal UI. System Events key code via
+            # Accessibility is the only method that works. Safe now
+            # that the C-side HID tap leak is removed.
+            if bg3_pid:
+                _try_click_continue(bg3_pid)
+            continue_sent = True
+            _phase("continue_clicked")
 
         try:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -531,6 +641,7 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
 
             if not socket_ever_connected:
                 _phase("socket_listening")
+                socket_listening_at = time.monotonic() - start
             socket_ever_connected = True
 
             time.sleep(0.3)
@@ -576,10 +687,53 @@ def wait_for_socket(timeout=HEALTH_TIMEOUT, dismiss_splash=False, process=None):
     _phase("timeout", f"{elapsed_ms}ms")
     return {
         "socket_connected": False,
+        "stage": "timeout",
         "elapsed_ms": elapsed_ms,
         "dismiss_attempts": dismiss_count,
         "phases": phases,
+        "watchdog_actions": menu_watchdog_actions,
+        "diagnostics": _collect_boot_diagnostics(),
     }
+
+
+def move_window_offscreen():
+    """Move the BG3 window off-screen so it renders without being visible.
+
+    Unlike ``visible=false`` or AXMinimized, moving off-screen does NOT
+    stall Metal — the GPU still renders to the framebuffer. This makes
+    the boot sequence invisible to the user while Metal initializes.
+    After socket connects, ``hide_window()`` fully hides it in the Dock.
+    """
+    script = r'''
+tell application "System Events"
+  if exists process "Baldur's Gate 3" then
+    tell process "Baldur's Gate 3"
+      repeat with w in windows
+        set position of w to {-10000, -10000}
+      end repeat
+    end tell
+  end if
+end tell
+'''
+    try:
+        r = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0:
+            # Activate terminal so user stays in their workflow
+            for app in ("Ghostty", "Terminal", "iTerm2"):
+                ra = subprocess.run(
+                    ["osascript", "-e", f'tell application "{app}" to activate'],
+                    capture_output=True, text=True, timeout=3,
+                )
+                if ra.returncode == 0:
+                    break
+            print("BG3 window moved off-screen (headless boot)", file=sys.stderr)
+            return {"success": True, "method": "position_offscreen"}
+        return {"success": False, "error": r.stderr.strip()}
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return {"success": False, "error": str(exc)}
 
 
 def hide_window():
@@ -651,22 +805,177 @@ tell application "Baldur's Gate 3" to activate
         }
 
 
-def _try_dismiss_splash(attempt, pid=None):
-    """Send Escape+Space to dismiss splash (skip Bink videos + press-any-key).
+def _tail_file(path, lines=80):
+    try:
+        text = Path(path).read_text(errors="replace")
+    except OSError:
+        return None
+    return "\n".join(text.splitlines()[-lines:])
 
-    Always uses the aggressive (focus-stealing) method because BG3 must
-    be visible and focused during boot for Metal to initialize. The
-    "headless-after-boot" pattern hides only after the socket responds.
+
+def _analyze_log_tail(text):
+    """Return compact problem markers from a boot log tail."""
+    if not text:
+        return {"has_problem_markers": False, "problem_lines": []}
+
+    problem_re = re.compile(
+        r"\b(error|fail(?:ed|ure)?|fatal|crash|exception|assert|panic|"
+        r"signal|timeout|refused|denied|missing|invalid)\b",
+        re.IGNORECASE,
+    )
+    problem_lines = []
+    for line in text.splitlines():
+        if problem_re.search(line):
+            problem_lines.append(line[-500:])
+
+    return {
+        "has_problem_markers": bool(problem_lines),
+        "problem_lines": problem_lines[-20:],
+    }
+
+
+def _collect_boot_diagnostics():
+    """Collect lightweight diagnostics when boot stalls."""
+    diagnostics = {}
+    latest = Path.home() / "Library/Application Support/BG3SE/logs/latest.log"
+    if latest.exists():
+        diagnostics["latest_log"] = str(latest.resolve())
+        log_tail = _tail_file(latest, lines=80)
+        diagnostics["latest_log_tail"] = log_tail
+        diagnostics["latest_log_analysis"] = _analyze_log_tail(log_tail)
+
+    try:
+        from .menu import collect_geometry, detect_menu
+        diagnostics["geometry"] = collect_geometry(capture=True)
+        debug_dir = PROJECT_ROOT / ".screenshots"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        debug_image = debug_dir / f"boot-stall-{int(time.time())}.png"
+        detection = detect_menu(debug_image=str(debug_image))
+        diagnostics["menu_detect"] = {
+            "buttons": [b.get("text") for b in detection.get("buttons", [])],
+            "raw_ocr": detection.get("raw_ocr", []),
+            "error": detection.get("error"),
+            "geometry": detection.get("geometry"),
+            "debug_image": detection.get("debug_image") or str(debug_image),
+        }
+    except Exception as exc:
+        diagnostics["menu_error"] = str(exc)
+    return diagnostics
+
+
+def should_retry_boot(health):
+    """Return True when a failed boot is likely transient/retryable."""
+    if health.get("socket_connected"):
+        return False
+    return health.get("stage") in BOOT_RETRYABLE_STAGES
+
+
+def _try_watchdog_continue(pid, attempt):
+    """Retry menu progress with a measured foreground mouse click."""
+    action = {
+        "attempt": attempt,
+        "method": "foreground_physical_left_click",
+        "success": False,
+    }
+    try:
+        from .menu import click_fraction, detect_menu
+
+        detection = detect_menu()
+        buttons = [b.get("text") for b in detection.get("buttons", [])]
+        action["buttons"] = buttons
+        action["menu_detected"] = bool({"Continue", "New Game", "Load Game", "Multiplayer"} & set(buttons))
+        action["ocr_error"] = detection.get("error")
+        purpose, fraction = _watchdog_target_for_attempt(attempt)
+        if action["menu_detected"] and purpose == "dismiss_splash":
+            purpose = "click_continue"
+            fraction = _CONTINUE_CLICK_FRACTIONS[0]
+        action["purpose"] = purpose
+
+        action["target_fraction"] = fraction
+
+        if isinstance(fraction, list):
+            clicks = []
+            geometry = detection.get("geometry")
+            for item in fraction:
+                click_result = click_fraction(
+                    item["x"],
+                    item["y"],
+                    method="both",
+                    activate=True,
+                )
+                click_result["target_fraction"] = item
+                clicks.append(click_result)
+                geometry = click_result.get("geometry") or geometry
+                time.sleep(0.25)
+            action["clicks"] = clicks
+            action["geometry"] = geometry
+            action["success"] = any(bool(c.get("success")) for c in clicks)
+        else:
+            click_result = click_fraction(
+                fraction["x"],
+                fraction["y"],
+                method="both",
+                activate=True,
+            )
+            action["click"] = click_result
+            action["geometry"] = click_result.get("geometry") or detection.get("geometry")
+            action["success"] = bool(click_result.get("success"))
+    except Exception as exc:
+        action["error"] = str(exc)
+    return action
+
+
+_kVK_Escape = 53
+_kVK_Space = 49
+_kVK_Return = 36
+
+
+def _try_dismiss_splash(attempt, pid=None):
+    """Send Escape+Space to dismiss splash via System Events key code.
+
+    Routes through the Accessibility framework so keys never touch the
+    HID event stream and never leak to the terminal. Falls back to the
+    aggressive method only if no PID is available.
     """
     try:
-        from .menu import dismiss_splash_aggressive
-        result = dismiss_splash_aggressive()
-
-        if result.get("success"):
-            method = result.get("method", "unknown")
-            print(f"Splash dismiss #{attempt} ({method})", file=sys.stderr)
+        if pid:
+            from .menu import cg_key_to_pid
+            cg_key_to_pid(pid, _kVK_Escape)
+            time.sleep(0.2)
+            cg_key_to_pid(pid, _kVK_Space)
+            print(f"Splash dismiss #{attempt} (SystemEvents)", file=sys.stderr)
+        else:
+            from .menu import dismiss_splash_aggressive
+            result = dismiss_splash_aggressive()
+            if result.get("success"):
+                print(f"Splash dismiss #{attempt} ({result.get('method', 'aggressive')})",
+                      file=sys.stderr)
     except Exception:
         pass
+
+
+def _try_click_continue(pid):
+    """Send Enter to click the highlighted Continue button."""
+    try:
+        from .menu import cg_key_to_pid
+        cg_key_to_pid(pid, _kVK_Return)
+        print("Sent Enter to click Continue", file=sys.stderr)
+    except Exception:
+        pass
+
+
+def _detect_main_menu():
+    """Check if the BG3 main menu is visible via Vision OCR."""
+    try:
+        from .menu import detect_menu
+        result = detect_menu()
+        buttons = [b["text"] for b in result.get("buttons", [])]
+        menu_labels = {"Continue", "New Game", "Load Game", "Multiplayer"}
+        if menu_labels & set(buttons):
+            return True, buttons
+        return False, buttons
+    except Exception:
+        return False, []
 
 
 def is_running():

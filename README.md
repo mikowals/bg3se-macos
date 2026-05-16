@@ -135,7 +135,8 @@ This is just a sample—many more mods work out of the box. See **[docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ `!test` suite (85 tests), `!test_ingame` (40 tests), Debug.* helpers, Frida scripts |
+| Testing | ✅ 4-tier: 41 C (Tier 0) + 41 pytest (Tier H) + 93 `!test` (Tier 1) + 54 `!test_ingame` (Tier 2) = **229 tests**, Debug.* helpers |
+| Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
 See [ROADMAP.md](ROADMAP.md) for detailed progress.
 
@@ -305,7 +306,7 @@ bg3se-macos/
 │   └── ...                     # Other user-facing documentation
 │
 ├── tools/
-│   ├── bg3se_harness/          # 36-command Python CLI (build/patch/launch/test/inspect)
+│   ├── bg3se_harness/          # 37-command Python CLI (build/patch/launch/test/inspect)
 │   │   ├── cli.py              #   Argparse root + handler dispatch
 │   │   ├── nexus.py            #   Nexus Mods API v1 client (search, info, files, changelogs, updated)
 │   │   ├── wiki.py             #   bg3.wiki MediaWiki client (spell, item, verify, clear-cache)

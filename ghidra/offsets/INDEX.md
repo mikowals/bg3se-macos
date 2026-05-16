@@ -55,3 +55,12 @@ Reverse-engineered offset documentation from Ghidra analysis of the BG3 macOS bi
 |------|-------------|
 | [windows_reference_sizes.json](windows_reference_sizes.json) | Windows component sizes for comparison |
 | `staging/` | Work-in-progress extraction results |
+
+## Related Documentation
+
+| Location | Description |
+|----------|-------------|
+| `docs/re/global-singletons.md` | All confirmed global singleton addresses (nm -a) |
+| `docs/re/INDEX.md` | RE documentation index |
+| `docs/bugs/noesis-input-bypass-re.md` | Noesis input pipeline + focus gate analysis |
+| `scripts/re/` | ARM64 binary analysis scripts (no Ghidra required) |

@@ -19,6 +19,11 @@ src/
 │   ├── entity_system.c/h  # Core ECS, Lua bindings
 │   ├── guid_lookup.c/h    # GUID parsing, HashMap operations
 │   └── arm64_call.c/h     # ARM64 ABI wrappers (x8 indirect return)
+├── game/           # Game-level modules
+│   ├── game_state.c/h        # Game state tracking
+│   ├── global_switches.c/h   # Global configuration switches
+│   ├── video_skip.c/h        # Intro video skip (UserDefaults + graphicSettings)
+│   └── focus_hack.c/h        # BaseApp focus force (0x142 flag bypass for Noesis input)
 ├── hooks/          # Legacy hook stubs (actual hooks in main.c)
 ├── imgui/          # Dear ImGui overlay system
 │   ├── imgui_metal_backend.mm  # Metal rendering, coord conversion
@@ -26,7 +31,8 @@ src/
 │   └── lua_imgui.c             # Ext.IMGUI Lua bindings
 ├── injector/       # Main injection logic (main.c)
 ├── input/          # System-level input capture
-│   └── input_hooks.m           # CGEventTap for keyboard/mouse
+│   ├── input_hooks.m           # CGEventTap for keyboard/mouse
+│   └── focusless_input.m       # Focusless input for headless splash dismiss (CGEvent)
 ├── level/          # LevelManager, PhysicsScene, AiGrid access
 │   └── level_manager.c/h   # Singleton access, VMT-based physics dispatch
 ├── audio/          # WWise sound engine access
@@ -48,6 +54,8 @@ src/
 - `src/mod/mod_loader.c` - Mod detection from modsettings.lsx, PAK loading
 - `src/lua/lua_*.c` - Ext.* API implementations
 - `src/stats/stats_manager.c` - RPGStats global access, stat property resolution
+- `src/game/game_state.c` - Game state tracking, state change callbacks
+- `src/game/focus_hack.c` - BaseApp focus force (0x142 bypass for Noesis input gate)
 - `ghidra/offsets/` - Modular offset documentation
 
 ## Modular Design Pattern
@@ -75,6 +83,22 @@ void module_init(void) { ... }
 1. Code exceeds ~100 lines with related functionality
 2. State (static variables) can be isolated
 3. Multiple source files need the functionality
+
+## Console Poll Timer (GCD)
+
+The socket console (`/tmp/bg3se.sock`) is polled by a GCD dispatch timer at 100ms intervals, independent of Osiris events. Without this, the socket only responded during gameplay (when `fake_Event()` fired Osiris hooks). The timer uses an atomic flag to prevent concurrent Lua access between the GCD queue and the game thread.
+
+```
+GCD Timer (100ms, QOS_USER_INTERACTIVE)
+    │
+    └── atomic_exchange(&polling, 1)
+            │
+            ├── console_poll(L)  →  socket_poll_clients + file_console_poll
+            │
+            └── atomic_store(&polling, 0)
+```
+
+Cleanup: timer cancelled in `shutdown_lua()` before Lua state destruction.
 
 ## Platform Notes
 - Game binary is ARM64 on Apple Silicon, Rosetta for Intel

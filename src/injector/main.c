@@ -18,6 +18,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <zlib.h>
+#include <dispatch/dispatch.h>
+#include <stdatomic.h>
 
 // LZ4 decompression
 #include "lz4/lz4.h"
@@ -99,6 +101,7 @@ extern "C" {
 #include "game_state.h"
 #include "global_switches.h"
 #include "video_skip.h"
+#include "focus_hack.h"
 
 // Input system
 #include "input.h"
@@ -396,6 +399,7 @@ static void *resolve_osiris_symbol(void *handle, const FunctionPattern *pat) {
 
 // Lua state
 static lua_State *L = NULL;
+static dispatch_source_t s_console_poll_timer = NULL;
 
 // Module loading state
 #define MAX_LOADED_MODULES 256
@@ -2157,6 +2161,7 @@ static void init_lua(void) {
     {
         const char *auto_dismiss = getenv("BG3SE_AUTO_DISMISS_SPLASH");
         if (auto_dismiss && auto_dismiss[0] && auto_dismiss[0] != '0') {
+            focus_hack_deferred_force_focus();
             focusless_input_start_splash_autodismiss(120.0, 2.0);
         }
     }
@@ -2214,12 +2219,34 @@ static void init_lua(void) {
     uint64_t t_lua_total = (uint64_t)timer_get_monotonic_ms();
     LOG_LUA_INFO("Lua %s initialized (%llums total)", LUA_VERSION,
                  (unsigned long long)(t_lua_total - t_total));
+
+    // Start a GCD timer to poll the console socket independently of Osiris events.
+    // Without this, the socket only responds during gameplay (when fake_Event fires).
+    dispatch_queue_t poll_queue = dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0);
+    s_console_poll_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, poll_queue);
+    dispatch_source_set_timer(s_console_poll_timer,
+                              dispatch_time(DISPATCH_TIME_NOW, 0),
+                              100 * NSEC_PER_MSEC,
+                              10 * NSEC_PER_MSEC);
+    dispatch_source_set_event_handler(s_console_poll_timer, ^{
+        static _Atomic int polling = 0;
+        if (L && !atomic_exchange(&polling, 1)) {
+            console_poll(L);
+            atomic_store(&polling, 0);
+        }
+    });
+    dispatch_resume(s_console_poll_timer);
+    LOG_CORE_INFO("Console poll timer started (100ms interval)");
 }
 
 /**
  * Shutdown Lua runtime
  */
 static void shutdown_lua(void) {
+    if (s_console_poll_timer) {
+        dispatch_source_cancel(s_console_poll_timer);
+        s_console_poll_timer = NULL;
+    }
     if (L) {
         LOG_LUA_INFO("Shutting down Lua runtime...");
 

@@ -34,8 +34,8 @@ tooling.
 | `build` | Build dylib via cmake, verify universal binary, deploy to Steam folder |
 | `patch` | Inject libbg3se.dylib into BG3 binary via insert_dylib |
 | `unpatch` | Restore original BG3 binary from backup |
-| `launch [--continue\|--save NAME] [--headless] [--no-skip-videos]` | Build + patch + launch + socket health check; skips intro videos by default |
-| `test [filter] [--headless] [--no-skip-videos]` | Tier 1 regression tests, output structured JSON; skips intro videos by default |
+| `launch [--continue\|--save NAME] [--headless] [--boot-retries N] [--no-skip-videos]` | Build + patch + launch + socket health check; skips intro videos by default |
+| `test [filter] [--headless] [--boot-retries N] [--no-skip-videos]` | Tier 1 regression tests, output structured JSON; skips intro videos by default |
 | `test --tier 2 [filter]` | Tier 2 in-game tests (requires loaded save) |
 | `run "<lua>"` | Send inline Lua to the running game via socket |
 | `eval script.lua` | Run a Lua file (stdin `-` for piping) |
@@ -115,7 +115,9 @@ follow-up.
 | `compat list` / `compat run mcm` | Autonomous mod compat scenarios |
 | `compat vet <source>` | Vet mod (catalog key, Nexus ID, PAK path) — JSON report |
 | `author new MyMod` | Scaffold a new mod directory |
-| `menu detect` / `menu click "Continue"` | Vision OCR + CGEvent main-menu automation |
+| `menu detect [--debug-image PATH]` / `menu click "Continue"` | Vision OCR + CGEvent main-menu automation |
+| `menu click-fraction X Y [--method both]` | Foreground click probe at a window-relative point when OCR fails |
+| `menu geometry [--capture]` | Report Quartz, System Events, screenshot, and Retina coordinate data |
 | `flags [--group X]` | 40 discovered BG3 CLI flags |
 | `ghidra decompile <name\|0xADDR>` | Ghidra HTTP bridge (requires running Ghidra + GhidraMCP) |
 
@@ -215,9 +217,13 @@ tools/bg3se_harness/
 
 **Binary not patched after game update:** Run `patch` again—it detects the hash change and re-patches from the updated binary.
 
-**Socket timeout:** The health check polls `/tmp/bg3se.sock` for 30s. If BG3 is slow to start, use `--timeout 60`.
+**Socket timeout:** The health check polls `/tmp/bg3se.sock` for 30s, or 180s for `--continue` / `--save`. If BG3 is slow to start, use `--timeout 60` for `launch` or `test` to set the per-attempt timeout.
 
 **Headless mode (`--headless`):** On macOS this is a temporary windowed launch plus app hide, not renderer-level headless mode. Fullscreen BG3 creates its own macOS Space, which System Events cannot reliably escape while the game is creating video and Metal windows. For headless launches, the harness snapshots `graphicSettings.lsx`, temporarily writes normal windowed settings (`Fullscreen=0`, fake fullscreen off, `1280x720`), starts BG3, hides the normal app window, then restores the original graphics file so later manual launches keep the user's display mode. A brief window flash can still happen during boot. JSON output includes the hide result and `graphics_restore`; failures attempt restore before returning.
+
+**Boot retry/cancel diagnostics:** Foreground `launch` and `test` default to one automatic retry in `--headless` mode (`--boot-retries 1`), and zero retries otherwise unless explicitly requested. When an attempt reaches `stage: "timeout"` or `stage: "menu_stalled"`, the harness tails the latest BG3SE log, extracts likely problem lines, records menu geometry/OCR diagnostics, force-quits BG3, restores temporary graphics settings, waits `--retry-delay` seconds, and relaunches. JSON output includes `boot_attempts`, each attempt's `diagnostics`, and `retry_cleanup` with cancel/restore results. If the socket listens but never responds, the per-process menu watchdog still retries Continue delivery with key and coordinate fallbacks before the higher-level boot retry starts.
+
+**Menu click misses:** Use `menu geometry --capture` while BG3 is visible to compare Quartz window bounds, System Events bounds, screenshot pixels, and measured backing scale. Use `menu detect --debug-image .screenshots/menu-debug.png` to write an annotated screenshot with OCR boxes and intended click centers. `menu click` includes the coordinate basis and alternatives in JSON so Retina pixel/point mismatches are visible instead of implicit.
 
 **Codesign warnings:** Ad-hoc signing may warn about subcomponents (log files in MacOS/). These are harmless—the binary itself is signed correctly.
 

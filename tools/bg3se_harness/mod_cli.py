@@ -44,6 +44,11 @@ def _resolve_uuid(uuid_or_name: str) -> str | dict:
     return {"error": f"Mod not found in registry: {uuid_or_name!r}"}
 
 
+def _registry_entry(uuid: str) -> dict | None:
+    from .mod_manager.registry import load_registry
+    return load_registry().get(uuid)
+
+
 def cmd_mod(args):
     """CLI handler for mod subcommands."""
     subcmd = args.mod_command
@@ -74,22 +79,44 @@ def cmd_mod(args):
             return 0 if "error" not in result else 1
 
     elif subcmd == "enable":
-        from .mod_manager.modsettings import enable_mod
+        from .mod_manager.modsettings import add_mod
+        from .mod_manager.registry import set_mod_enabled
         uuid = _resolve_uuid(args.name)
         if isinstance(uuid, dict):
             print(json.dumps(uuid, indent=2))
             return 1
-        result = enable_mod(uuid)
+        entry = _registry_entry(uuid)
+        if not entry:
+            result = {"error": f"Mod not found in registry: {uuid!r}"}
+            print(json.dumps(result, indent=2))
+            return 1
+        name = entry.get("name") or uuid
+        folder = entry.get("folder") or name
+        version = entry.get("version") or "36028797018963968"
+        result = add_mod(
+            uuid=uuid,
+            name=name,
+            folder=folder,
+            version=version,
+            md5=entry.get("md5", ""),
+        )
+        if "error" not in result:
+            set_mod_enabled(uuid, True)
+            result["enabled"] = True
         print(json.dumps(result, indent=2))
         return 0 if "error" not in result else 1
 
     elif subcmd == "disable":
         from .mod_manager.modsettings import disable_mod
+        from .mod_manager.registry import set_mod_enabled
         uuid = _resolve_uuid(args.name)
         if isinstance(uuid, dict):
             print(json.dumps(uuid, indent=2))
             return 1
         result = disable_mod(uuid)
+        if "error" not in result:
+            set_mod_enabled(uuid, False)
+            result["enabled"] = False
         print(json.dumps(result, indent=2))
         return 0 if "error" not in result else 1
 

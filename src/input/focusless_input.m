@@ -1,20 +1,21 @@
 /**
  * focusless_input.m - In-process input injection without focus
  *
- * Dispatches NSEvent keyDown/keyUp to [NSApp sendEvent:] on the main
- * thread via GCD.  Because the BG3SE dylib is loaded inside BG3's
- * address space, this reaches AppKit's event chain even when BG3 is
- * not the frontmost application.
+ * Calls [LSMTLView keyDown:] / [LSMTLView keyUp:] directly on BG3's
+ * Metal view.  This bypasses AppKit's event routing entirely — the
+ * view's keyDown: implementation calls ls::InputManager::InjectInput()
+ * regardless of whether the app is frontmost.
  *
- * The splash auto-dismiss timer fires Space at a configurable interval
- * and stops when focusless_input_mark_socket_ready() is called or
- * the duration expires.
+ * Discovery: Ghidra RE of LSMTLView::keyDown_ (0x100bd798c) shows it
+ * reads the InputManager* from ivar at offset 104, translates the
+ * macOS keyCode via s_KeyboardKeys[], and calls InjectInput directly.
  */
 
 #import <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
 #include <dispatch/dispatch.h>
 #include <os/log.h>
+#include <objc/runtime.h>
 
 #include "focusless_input.h"
 #include "../core/logging.h"
@@ -41,52 +42,47 @@ void focusless_input_shutdown(void) {
     LOG_CORE_INFO("[FocuslessInput] Shutdown");
 }
 
-static bool try_cgevent_hid(uint16_t keyCode) {
-    CGEventRef down = CGEventCreateKeyboardEvent(NULL, keyCode, true);
-    CGEventRef up = CGEventCreateKeyboardEvent(NULL, keyCode, false);
-    if (!down || !up) {
-        if (down) CFRelease(down);
-        if (up)   CFRelease(up);
-        return false;
+static NSString *chars_for_keycode(uint16_t keyCode) {
+    switch (keyCode) {
+        case 0x24: return @"\r";   // kVK_Return
+        case 0x31: return @" ";    // kVK_Space
+        case 0x35: return @"\x1b"; // kVK_Escape
+        case 0x33: return @"\x7f"; // kVK_Delete (backspace)
+        case 0x30: return @"\t";   // kVK_Tab
+        default:   return @" ";
     }
-
-    CGEventPost(kCGHIDEventTap, down);
-    usleep(50000);
-    CGEventPost(kCGHIDEventTap, up);
-
-    CFRelease(down);
-    CFRelease(up);
-    return true;
 }
 
-static bool try_cgevent_to_self(uint16_t keyCode, uint32_t modifiers __attribute__((unused))) {
-    pid_t pid = getpid();
-
-    CGEventRef down = CGEventCreateKeyboardEvent(NULL, keyCode, true);
-    CGEventRef up = CGEventCreateKeyboardEvent(NULL, keyCode, false);
-    if (!down || !up) {
-        if (down) CFRelease(down);
-        if (up)   CFRelease(up);
-        return false;
+static NSView *find_lsmtlview(void) {
+    Class lsmtlClass = objc_getClass("LSMTLView");
+    if (!lsmtlClass) {
+        LOG_CORE_DEBUG("[FocuslessInput] LSMTLView class not found");
+        return nil;
     }
 
-    CGEventPostToPid(pid, down);
-    usleep(30000);
-    CGEventPostToPid(pid, up);
-
-    CFRelease(down);
-    CFRelease(up);
-    return true;
-}
-
-static void try_nsapp_send_event(uint16_t keyCode, uint32_t modifiers) {
-    NSWindow *keyWin = [NSApp keyWindow];
-    if (!keyWin) keyWin = [NSApp mainWindow];
-    if (!keyWin) {
-        NSArray *windows = [NSApp windows];
-        for (NSWindow *w in windows) {
-            if ([w isVisible]) { keyWin = w; break; }
+    for (NSWindow *w in [NSApp windows]) {
+        NSView *cv = [w contentView];
+        if ([cv isKindOfClass:lsmtlClass]) return cv;
+        for (NSView *sub in [cv subviews]) {
+            if ([sub isKindOfClass:lsmtlClass]) return sub;
         }
+    }
+    return nil;
+}
+
+static bool try_direct_view_key(uint16_t keyCode, uint32_t modifiers) {
+    NSView *view = find_lsmtlview();
+    if (!view) return false;
+
+    // Check if InputManager ivar is set (offset 104 per Ghidra RE)
+    void *inputMgr = NULL;
+    Ivar ivar = class_getInstanceVariable([view class], "inputManager");
+    if (ivar) {
+        inputMgr = *(void **)((uint8_t *)(__bridge void *)view + ivar_getOffset(ivar));
+    }
+    if (!inputMgr) {
+        LOG_CORE_DEBUG("[FocuslessInput] LSMTLView found but inputManager is NULL (ivar=%p)", (void *)ivar);
+        return false;
     }
 
     NSEventModifierFlags nsFlags = 0;
@@ -95,55 +91,113 @@ static void try_nsapp_send_event(uint16_t keyCode, uint32_t modifiers) {
     if (modifiers & (1 << 2)) nsFlags |= NSEventModifierFlagOption;
     if (modifiers & (1 << 3)) nsFlags |= NSEventModifierFlagCommand;
 
+    NSString *chars = chars_for_keycode(keyCode);
+    NSWindow *win = [view window];
+    NSInteger winNum = win ? [win windowNumber] : 0;
+
     NSEvent *down = [NSEvent keyEventWithType:NSEventTypeKeyDown
                                      location:NSMakePoint(0, 0)
                                 modifierFlags:nsFlags
                                     timestamp:[[NSProcessInfo processInfo] systemUptime]
-                                 windowNumber:keyWin ? [keyWin windowNumber] : 0
+                                 windowNumber:winNum
                                       context:nil
-                                   characters:@" "
-                  charactersIgnoringModifiers:@" "
+                                   characters:chars
+                  charactersIgnoringModifiers:chars
                                     isARepeat:NO
                                       keyCode:keyCode];
 
     NSEvent *up = [NSEvent keyEventWithType:NSEventTypeKeyUp
                                    location:NSMakePoint(0, 0)
                               modifierFlags:nsFlags
-                                  timestamp:[[NSProcessInfo processInfo] systemUptime] + 0.01
-                               windowNumber:keyWin ? [keyWin windowNumber] : 0
+                                  timestamp:[[NSProcessInfo processInfo] systemUptime] + 0.05
+                               windowNumber:winNum
                                     context:nil
-                                 characters:@" "
-                charactersIgnoringModifiers:@" "
+                                 characters:chars
+                charactersIgnoringModifiers:chars
                                   isARepeat:NO
                                     keyCode:keyCode];
 
-    if (down) [NSApp sendEvent:down];
-    if (up)   [NSApp sendEvent:up];
+    LOG_CORE_DEBUG("[FocuslessInput] Calling [LSMTLView keyDown:] key=%d inputMgr=%p win=%ld",
+                  keyCode, inputMgr, (long)winNum);
+    [view keyDown:down];
+    [view keyUp:up];
+    return true;
+}
+
+static bool try_direct_view_mouse_click(double x_fraction, double y_fraction_top_origin) {
+    NSView *view = find_lsmtlview();
+    if (!view) return false;
+
+    void *inputMgr = NULL;
+    Ivar ivar = class_getInstanceVariable([view class], "inputManager");
+    if (ivar) {
+        inputMgr = *(void **)((uint8_t *)(__bridge void *)view + ivar_getOffset(ivar));
+    }
+    if (!inputMgr) {
+        LOG_CORE_DEBUG("[FocuslessInput] LSMTLView found but inputManager is NULL for mouse (ivar=%p)", (void *)ivar);
+        return false;
+    }
+
+    NSWindow *win = [view window];
+    NSInteger winNum = win ? [win windowNumber] : 0;
+    NSRect bounds = [view bounds];
+    CGFloat x = NSMinX(bounds) + NSWidth(bounds) * x_fraction;
+    CGFloat y = NSMinY(bounds) + NSHeight(bounds) * (1.0 - y_fraction_top_origin);
+    NSPoint location = NSMakePoint(x, y);
+    NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+
+    NSEvent *down = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
+                                       location:location
+                                  modifierFlags:0
+                                      timestamp:now
+                                   windowNumber:winNum
+                                        context:nil
+                                    eventNumber:0
+                                     clickCount:1
+                                       pressure:1.0];
+
+    NSEvent *up = [NSEvent mouseEventWithType:NSEventTypeLeftMouseUp
+                                     location:location
+                                modifierFlags:0
+                                    timestamp:now + 0.08
+                                 windowNumber:winNum
+                                      context:nil
+                                  eventNumber:0
+                                   clickCount:1
+                                     pressure:0.0];
+
+    LOG_CORE_DEBUG("[FocuslessInput] Calling [LSMTLView mouseDown:] x=%.1f y=%.1f xf=%.3f yf=%.3f inputMgr=%p win=%ld",
+                  x, y, x_fraction, y_fraction_top_origin, inputMgr, (long)winNum);
+    [view mouseMoved:down];
+    [view mouseDown:down];
+    [view mouseUp:up];
+    return true;
 }
 
 bool focusless_input_post_key_press(uint16_t keyCode, uint32_t modifiers) {
     if (!s_initialized) return false;
 
-    // CGEvent can be posted from any thread — do it immediately so it
-    // works even when the main thread is blocked by Bink video playback.
-    bool cg_ok = try_cgevent_to_self(keyCode, modifiers);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            bool ok = try_direct_view_key(keyCode, modifiers);
+            LOG_CORE_DEBUG("[FocuslessInput] Posted key %d (direct_view=%s, attempt=%d)",
+                          keyCode, ok ? "yes" : "no", s_dismiss_count);
+        }
+    });
 
-    // Also try the global HID tap (reaches BG3 even without focus)
-    try_cgevent_hid(keyCode);
+    return true;
+}
 
-    // NSEvent fallback requires AppKit on the main thread
-    if (imgui_metal_first_drawable_seen() && !s_socket_ready) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            @autoreleasepool {
-                try_nsapp_send_event(keyCode, modifiers);
-            }
-        });
-    }
+bool focusless_input_post_mouse_click(double x_fraction, double y_fraction_top_origin) {
+    if (!s_initialized) return false;
 
-    LOG_CORE_DEBUG("[FocuslessInput] Posted key %d (CG=%s, Metal=%s, attempt=%d)",
-                  keyCode, cg_ok ? "yes" : "no",
-                  imgui_metal_first_drawable_seen() ? "yes" : "no",
-                  s_dismiss_count);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            bool ok = try_direct_view_mouse_click(x_fraction, y_fraction_top_origin);
+            LOG_CORE_DEBUG("[FocuslessInput] Posted mouse click xf=%.3f yf=%.3f (direct_view=%s, attempt=%d)",
+                          x_fraction, y_fraction_top_origin, ok ? "yes" : "no", s_dismiss_count);
+        }
+    });
 
     return true;
 }
@@ -193,6 +247,16 @@ void focusless_input_start_splash_autodismiss(double duration, double interval) 
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(200 * NSEC_PER_MSEC)),
                        dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
             focusless_input_post_key_press(0x31, 0);
+        });
+
+        // Some BG3 pre-Metal screens ignore key events but accept mouse
+        // activation through LSMTLView. Keep this native loop splash-only:
+        // foreground Python watchdog owns main-menu and modal clicks. Sending
+        // Escape/Return/clicks after the Mod Verification modal appears causes
+        // the UI to open and close repeatedly.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(800 * NSEC_PER_MSEC)),
+                       dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+            focusless_input_post_mouse_click(0.5, 0.5);
         });
     });
 

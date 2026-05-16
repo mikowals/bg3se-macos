@@ -13,6 +13,34 @@ Each entry includes:
 
 ---
 
+## [v0.37.1+headless] - 2026-05-16 — Headless CLI mode working + console poll timer + focus hack
+
+**Category:** Headless automation + console infrastructure | **Parity:** ~94%
+
+Headless CLI mode now works end-to-end: `launch --headless` achieves `socket_connected`
+in ~3s, window hidden via System Events, game runs in background at 1280x720 windowed.
+Console socket now responds at main menu (not just during gameplay) via GCD dispatch timer.
+Focus hack reintegrated to bypass Noesis input gate for background operation.
+
+### Added
+- **Console poll timer** — GCD dispatch timer (100ms) in `init_lua()` polls
+  `console_poll(L)` independently of Osiris events. Previously the socket only
+  responded inside `fake_Event()` (Osiris hook), which never fires at the main menu.
+  Uses atomic flag to prevent concurrent Lua access from game thread.
+- **Focus hack module** (`src/game/focus_hack.c`) — Forces `BaseApp+0x142` focus
+  flag to 1, bypassing Noesis GUI input gate that clears the device queue when app
+  lacks focus. Deferred polling (500ms, max 30 attempts) waits for `BaseApp::s_AppInstance`
+  at VA `0x108ac0278`.
+- **Headless mode verified** — `launch --headless` confirmed working: build → patch →
+  launch (windowed 1280x720) → socket responds (3.3s) → window hidden → graphics restored.
+
+### Known Issues
+- **`-continueGame` crash** — `gui::HotbarSystem::Update` NULL deref at `0x10` on
+  GameThread ~32s after save load. Pre-existing BG3 bug unrelated to BG3SE. Workaround:
+  launch without `--continue`, then load save via socket or menu automation.
+
+---
+
 ## [v0.36.50+e2e] - 2026-05-04 — 4-Tier test suite + observability APIs + 3 bug fixes
 
 **Category:** Testing infrastructure + debug APIs + bug fixes | **Parity:** ~94%

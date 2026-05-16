@@ -147,6 +147,21 @@ def unregister_mod(uuid: str) -> dict:
     return {"removed": True, "uuid": uuid}
 
 
+def set_mod_enabled(uuid: str, enabled: bool) -> dict:
+    """Update the registry's intended enabled state for *uuid*.
+
+    The actual active state still comes from modsettings.lsx; this flag is
+    retained as user intent so a reset load order can be restored.
+    """
+    registry = load_registry()
+    if uuid not in registry:
+        return {"updated": False, "uuid": uuid, "reason": "not found"}
+
+    registry[uuid]["enabled"] = enabled
+    save_registry(registry)
+    return {"updated": True, "uuid": uuid, "enabled": enabled}
+
+
 def get_mod(uuid: str) -> dict | None:
     """Return the registry entry for *uuid*, or None if not found."""
     registry = load_registry()
@@ -178,7 +193,11 @@ def list_mods() -> list[dict]:
     result: list[dict] = []
     for entry in registry.values():
         augmented = dict(entry)
-        augmented["in_load_order"] = entry.get("uuid", "") in active_uuids
+        in_load_order = entry.get("uuid", "") in active_uuids
+        if "enabled" in augmented:
+            augmented["registered_enabled"] = augmented["enabled"]
+        augmented["enabled"] = in_load_order
+        augmented["in_load_order"] = in_load_order
         result.append(augmented)
 
     result.sort(key=lambda e: (e.get("name") or "").lower())

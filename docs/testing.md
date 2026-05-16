@@ -51,9 +51,9 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 213 (66 offline + 147 in-game Lua) |
+| **Total tests** | 229 (82 offline + 147 in-game Lua) |
 | **Tier 0 (C unit)** | 41 — native binary, no game, CI-safe |
-| **Tier H (pytest)** | 25 — Python harness, no game, CI-safe |
+| **Tier H (pytest)** | 41 — Python harness, no game, CI-safe |
 | **Tier 1 (General)** | 93 — Lua, run anytime, no save needed (+8 parity) |
 | **Tier 2 (In-Game)** | 54 — Lua, require loaded save (+14 parity) |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
@@ -76,7 +76,7 @@ cd build && cmake --build . --target bg3se_test_tier0 && ./bin/bg3se_test_tier0
 
 ### Tier H: Python Harness Tests
 
-25 tests in `tests/harness/`. Run with pytest, no game dependency.
+41 tests in `tests/harness/`. Run with pytest, no game dependency.
 
 ```bash
 PYTHONPATH=tools pytest tests/harness/ -v
@@ -85,11 +85,13 @@ PYTHONPATH=tools pytest tests/harness/ -v
 | Module | Count | What it Tests |
 |--------|-------|---------------|
 | test_test_runner | 6 | parse_test_output (SLOW token, missing summary, empty, unrelated lines), run_tests error handling |
-| test_launch | 4 | wait_for_socket lifecycle (process exit, timeout, dismiss ordering) |
-| test_cli | 5 | headless hide ordering, build pipeline failures, test process exit |
-| test_mod | 5 | name→UUID resolution (exact, substring, case-insensitive, ambiguous, not found) |
+| test_launch | 6 | wait_for_socket lifecycle (process exit, timeout, dismiss ordering, menu stall watchdog) |
+| test_cli | 8 | headless hide ordering, build pipeline failures, test process exit, boot retry |
+| test_mod | 7 | name→UUID resolution (exact, substring, case-insensitive, ambiguous, not found), mod enable/list |
 | test_savegames | 2 | restore backup behavior (with/without existing save) |
 | test_compat | 3 | log timestamp scoping (all, filtered, future) |
+| test_headless_graphics | 4 | windowed mode graphics prep and restore |
+| test_menu | 5 | menu detection, click delivery, coordinate geometry |
 
 ### Tier 1+2: Lua In-Game Tests
 

@@ -92,11 +92,72 @@ These enums are used for UI behaviors:
 | `FocusDirection` | `0x1002ec44c` |
 | `MediaState` | `0x1003304a0` |
 
+## Input Pipeline (2026-05-16)
+
+### Architecture
+
+```
+[LSMTLView keyDown:] (0x100bd798c)
+    ↓ reads inputManager ivar at offset 104
+    ↓ translates macOS keyCode via s_KeyboardKeys[keyCode] → Noesis::Key
+    ↓ builds InputRawChange: {uint32 noesisKey, float[2]{1.0,?}, uint8 pressed=1}
+    ↓
+ls::InputManager::InjectInput (0x1064c4f14)
+    ↓ locks CriticalSection at +0x14
+    ↓ appends to array at +0x3a8 (size at +0x3b0, cap at +0x3b4)
+    ↓
+[Game main loop processes queue]
+    ↓
+Noesis::Keyboard::KeyDown (0x10054fec4)
+    ↓ updates key state at keyboard + key*4 + 0xc
+    ↓ gets focused element from keyboard + 0x310
+    ↓ raises PreviewKeyDownEvent then KeyDownEvent on focused UIElement
+    ↓
+Noesis::CommandManager::ProcessInput (0x10048bcc4)
+    ↓ FindInputBinding / FindCommandBinding on the target element
+    ↓ checks CanExecute, then calls Execute
+```
+
+### Key Functions
+
+| Function | Address | Role |
+|----------|---------|------|
+| `Noesis::GUI::CreateView` | `0x100535de4` | Allocates 0x140-byte View |
+| `Noesis::View::GetKeyboard` | `0x10060fb74` | Returns `*(this + 0x88)` |
+| `Noesis::View::Update` | `0x10061063c` | Called every frame |
+| `Noesis::View::View(FrameworkElement*)` | `0x10060f008` | Constructor |
+| `Noesis::Keyboard::KeyDown` | `0x10054fec4` | Direct keyboard event |
+| `Noesis::CommandManager::ProcessInput` | `0x10048bcc4` | Command dispatch |
+
+### Focus Gate (Critical for Headless)
+
+`BaseApp::OnFocusChange(bool)` at `0x105d148f8`:
+- Stores focus at `BaseApp + 0x142`
+- On focus LOST: iterates `InputManager + 0xa0` device list, resets all keys
+- **Blocks headless input injection** — input is cleared when app isn't frontmost
+- **Bypass:** Write 1 to `BaseApp::s_AppInstance + 0x142` (see `src/game/focus_hack.c`)
+
+### Button Activation Rules
+
+- **Space** → activates any FOCUSED button (Button.OnKeyDown)
+- **Return** → activates only buttons with `IsDefault=true`
+- `-continueGame` highlights Continue but does NOT set keyboard focus
+- Result: neither Return nor Space activates Continue without focus hack
+
+### Key Translation Table
+
+`cocoa::CocoaInputTranslator::s_KeyboardKeys` — uint16_t[0xb4]:
+- macOS keyCode 0x24 (Return) → Noesis::Key (likely 6)
+- macOS keyCode 0x31 (Space) → Noesis::Key (likely 18)
+- macOS keyCode 0x35 (Escape) → Noesis::Key
+
 ## Future Work
 
 - Extract XAML structure from game files for UI modding
 - Hook Noesis rendering for overlay injection
 - Understand NoesisApp custom controls for BG3-specific UI elements
+- Confirm Noesis::Key enum values via runtime probing
+- Test focus hack with live input injection
 
 ## Related Files
 

@@ -18,6 +18,7 @@ bool focusless_input_init(void);
 void focusless_input_shutdown(void);
 
 bool focusless_input_post_key_press(uint16_t keyCode, uint32_t modifiers);
+bool focusless_input_post_mouse_click(double x_fraction, double y_fraction_top_origin);
 
 void focusless_input_start_splash_autodismiss(double duration, double interval);
 void focusless_input_mark_socket_ready(void);

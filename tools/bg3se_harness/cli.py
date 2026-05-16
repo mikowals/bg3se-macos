@@ -1,6 +1,8 @@
 import argparse
+import copy
 import json
 import sys
+import time
 
 from . import build as build_mod
 from . import launch as launch_mod
@@ -78,6 +80,114 @@ def _collect_extra_flags(args):
                 i += 1
 
     return flags or None
+
+
+def _boot_retry_count(args, headless):
+    value = getattr(args, "boot_retries", None)
+    if value is not None:
+        return max(0, value)
+    return 1 if headless else 0
+
+
+def _retry_delay(args):
+    return max(0.0, float(getattr(args, "retry_delay", 3.0) or 0.0))
+
+
+def _cancel_boot_attempt(health, *, headless, reason):
+    """Cancel a failed boot attempt and restore transient settings."""
+    cleanup = {"reason": reason}
+    if health.get("stage") != "process_exited":
+        cleanup["cancel"] = launch_mod.quit_game(force=True)
+    if headless:
+        cleanup["graphics_restore"] = launch_mod.restore_headless_graphics(
+            reason=reason,
+        )
+    return cleanup
+
+
+def _boot_attempts_summary(attempts):
+    """Deep-copy attempts before embedding them in final JSON output."""
+    return [copy.deepcopy(attempt) for attempt in attempts]
+
+
+def _launch_until_socket(
+    *,
+    continue_game,
+    load_save,
+    extra_flags,
+    skip_videos,
+    headless,
+    timeout,
+    auto_dismiss=True,
+    retries=0,
+    retry_delay=3.0,
+):
+    attempts = []
+    max_attempts = retries + 1
+
+    for attempt in range(1, max_attempts + 1):
+        if max_attempts > 1:
+            print(
+                f"Launching BG3... attempt {attempt}/{max_attempts}",
+                file=sys.stderr,
+            )
+        proc = launch_mod.launch(
+            continue_game=continue_game,
+            load_save=load_save,
+            extra_flags=extra_flags,
+            skip_videos=skip_videos,
+            auto_dismiss=auto_dismiss,
+            headless=headless,
+        )
+
+        print("Waiting for SE socket...", file=sys.stderr)
+        health = launch_mod.wait_for_socket(
+            timeout=timeout,
+            dismiss_splash=True,
+            process=proc,
+        )
+        health["pid"] = proc.pid
+        health["attempt"] = attempt
+        attempts.append(health)
+
+        if health.get("socket_connected"):
+            return proc, health, attempts
+
+        retryable = launch_mod.should_retry_boot(health)
+        if attempt < max_attempts and retryable:
+            stage = health.get("stage", "socket_not_connected")
+            reason = f"boot_retry_{attempt}_{stage}"
+            health["retrying"] = True
+            health["retry_cleanup"] = _cancel_boot_attempt(
+                health,
+                headless=headless,
+                reason=reason,
+            )
+            print(
+                f"Boot attempt {attempt} failed at {stage}; "
+                f"cancelled BG3 and retrying after {retry_delay:.1f}s",
+                file=sys.stderr,
+            )
+            if retry_delay:
+                time.sleep(retry_delay)
+            continue
+
+        return proc, health, attempts
+
+    return proc, health, attempts
+
+
+def _attach_headless_failure(health, *, reason):
+    cleanup = _cancel_boot_attempt(health, headless=True, reason=reason)
+    health["headless"] = {
+        "requested": True,
+        "hidden": False,
+        "reason": health.get("stage", "socket_not_connected"),
+    }
+    if "graphics_restore" in cleanup:
+        health["headless"]["graphics_restore"] = cleanup["graphics_restore"]
+    if "cancel" in cleanup:
+        health["headless"]["cancel"] = cleanup["cancel"]
 
 
 def _add_launch_flags(parser):
@@ -182,22 +292,22 @@ def cmd_launch(args):
 
     # Launch with game flags
     skip_videos = getattr(args, "skip_videos", True)
-    print("Launching BG3...", file=sys.stderr)
-    proc = launch_mod.launch(
-        continue_game=continue_game,
-        load_save=load_save,
-        extra_flags=extra_flags,
-        skip_videos=skip_videos,
-        headless=headless,
-    )
-
     timeout = getattr(args, "timeout", None)
     if timeout is None:
         timeout = launch_mod.default_timeout(continue_game, load_save)
-
+    retries = _boot_retry_count(args, headless)
     auto_dismiss = getattr(args, "auto_dismiss", True)
 
     if background:
+        print("Launching BG3...", file=sys.stderr)
+        proc = launch_mod.launch(
+            continue_game=continue_game,
+            load_save=load_save,
+            extra_flags=extra_flags,
+            skip_videos=skip_videos,
+            auto_dismiss=auto_dismiss,
+            headless=headless,
+        )
         import subprocess as _sp
         _sp.Popen(
             [sys.executable, "-m", "bg3se_harness._monitor",
@@ -221,14 +331,22 @@ def cmd_launch(args):
         print(json.dumps(result, indent=2))
         return 0
 
-    # Foreground: block until socket responds
-    print("Waiting for SE socket...", file=sys.stderr)
-    health = launch_mod.wait_for_socket(
-        timeout=timeout, dismiss_splash=True, process=proc,
+    proc, health, attempts = _launch_until_socket(
+        continue_game=continue_game,
+        load_save=load_save,
+        extra_flags=extra_flags,
+        skip_videos=skip_videos,
+        headless=headless,
+        timeout=timeout,
+        auto_dismiss=auto_dismiss,
+        retries=retries,
+        retry_delay=_retry_delay(args),
     )
-    health["pid"] = proc.pid
+
     health["patch"] = pr
     health["continue_game"] = continue_game
+    health["boot_retries"] = retries
+    health["boot_attempts"] = _boot_attempts_summary(attempts)
     if load_save:
         health["load_save"] = load_save
 
@@ -245,15 +363,10 @@ def cmd_launch(args):
                 "graphics_restore": restore_result,
             }
         else:
-            restore_result = launch_mod.restore_headless_graphics(
+            _attach_headless_failure(
+                health,
                 reason="foreground_socket_not_connected",
             )
-            health["headless"] = {
-                "requested": True,
-                "hidden": False,
-                "reason": "socket_not_connected",
-                "graphics_restore": restore_result,
-            }
 
     print(json.dumps(health, indent=2))
     return 0 if health.get("socket_connected") else 1
@@ -292,33 +405,30 @@ def cmd_test(args):
 
     # Launch
     skip_videos = getattr(args, "skip_videos", True)
-    print("Launching BG3...", file=sys.stderr)
-    proc = launch_mod.launch(
+    timeout = getattr(args, "timeout", None)
+    if timeout is None:
+        timeout = launch_mod.default_timeout(continue_game, load_save)
+    retries = _boot_retry_count(args, headless)
+
+    proc, health, attempts = _launch_until_socket(
         continue_game=continue_game,
         load_save=load_save,
         extra_flags=extra_flags,
         skip_videos=skip_videos,
         headless=headless,
-    )
-
-    # Wait for socket — dismisses splash screen via CGEvent while BG3 is visible
-    print("Waiting for SE socket...", file=sys.stderr)
-    timeout = launch_mod.default_timeout(continue_game, load_save)
-    health = launch_mod.wait_for_socket(
-        timeout=timeout, dismiss_splash=True, process=proc,
+        timeout=timeout,
+        retries=retries,
+        retry_delay=_retry_delay(args),
     )
     if not health.get("socket_connected"):
         health["stage"] = health.get("stage", "health")
-        health["pid"] = proc.pid
+        health["boot_retries"] = retries
+        health["boot_attempts"] = _boot_attempts_summary(attempts)
         if headless:
-            health["headless"] = {
-                "requested": True,
-                "hidden": False,
-                "reason": "socket_not_connected",
-                "graphics_restore": launch_mod.restore_headless_graphics(
-                    reason="test_socket_not_connected",
-                ),
-            }
+            _attach_headless_failure(
+                health,
+                reason="test_socket_not_connected",
+            )
         print(json.dumps(health, indent=2))
         return 1
 
@@ -346,6 +456,8 @@ def cmd_test(args):
         "pid": proc.pid,
         "continue_game": continue_game,
         "socket_elapsed_ms": health.get("elapsed_ms"),
+        "boot_retries": retries,
+        "boot_attempts": _boot_attempts_summary(attempts),
     }
     if headless_result:
         output["launch"]["headless"] = headless_result
@@ -505,6 +617,10 @@ def main():
     # launch
     p_launch = sub.add_parser("launch", help="Build, patch, launch, and health-check")
     p_launch.add_argument("--timeout", type=int, help="Socket health check timeout (seconds)")
+    p_launch.add_argument("--boot-retries", type=int, default=None,
+                          help="Retry failed boot attempts after timeout/menu stall; default 1 with --headless, otherwise 0")
+    p_launch.add_argument("--retry-delay", type=float, default=3.0,
+                          help="Seconds to wait between boot retries (default: 3)")
     p_launch.add_argument("--headless", action="store_true", help="Hide BG3 window after socket connects")
     p_launch.add_argument("--background", action="store_true",
                           help="Return immediately after launch; monitor socket in background")
@@ -514,6 +630,11 @@ def main():
     p_test = sub.add_parser("test", help="Full autonomous pipeline: build+patch+launch+continue+test")
     p_test.add_argument("filter", nargs="?", help="Test name filter pattern")
     p_test.add_argument("--tier", type=int, default=1, choices=[1, 2], help="Test tier (1=console, 2=ingame)")
+    p_test.add_argument("--timeout", type=int, help="Per-attempt socket health check timeout (seconds)")
+    p_test.add_argument("--boot-retries", type=int, default=None,
+                        help="Retry failed boot attempts after timeout/menu stall; default 1 with --headless, otherwise 0")
+    p_test.add_argument("--retry-delay", type=float, default=3.0,
+                        help="Seconds to wait between boot retries (default: 3)")
     p_test.add_argument("--no-continue", dest="continue_game", action="store_false",
                          help="Don't auto-continue (stop at main menu)")
     p_test.add_argument("--headless", action="store_true", help="Hide BG3 window after socket connects")
@@ -622,15 +743,29 @@ def main():
     p_menu = sub.add_parser("menu", help="Main menu automation (OCR + click)")
     menu_sub = p_menu.add_subparsers(dest="menu_command", required=True)
 
-    menu_sub.add_parser("detect", help="Detect visible menu buttons via Vision OCR")
+    p_md = menu_sub.add_parser("detect", help="Detect visible menu buttons via Vision OCR")
+    p_md.add_argument("--debug-image", metavar="PATH",
+                      help="Write an annotated screenshot with OCR boxes/click centers")
 
     p_mc = menu_sub.add_parser("click", help="Click a menu button by name")
     p_mc.add_argument("button", help="Button text (e.g. 'Continue', 'New Game')")
+
+    p_mcf = menu_sub.add_parser("click-fraction", help="Click a window-relative fraction")
+    p_mcf.add_argument("x_fraction", type=float, help="Window x fraction, 0.0-1.0")
+    p_mcf.add_argument("y_fraction", type=float, help="Window y fraction, 0.0-1.0")
+    p_mcf.add_argument("--method", choices=("cgevent", "system-events", "both"),
+                       default="both", help="Click delivery method (default both)")
+    p_mcf.add_argument("--no-activate", action="store_true",
+                       help="Do not bring BG3 to foreground before clicking")
 
     p_mw = menu_sub.add_parser("wait", help="Poll until main menu is visible")
     p_mw.add_argument("--timeout", type=int, default=60, help="Timeout in seconds (default 60)")
 
     menu_sub.add_parser("dismiss", help="Dismiss 'Click to Continue' splash screen")
+
+    p_mg = menu_sub.add_parser("geometry", help="Report Quartz/System Events/Retina geometry")
+    p_mg.add_argument("--capture", action="store_true",
+                      help="Capture a temporary screenshot to report pixel dimensions")
 
     # compat
     p_compat = sub.add_parser("compat", help="Mod compatibility test runner")

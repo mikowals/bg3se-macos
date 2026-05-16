@@ -4,7 +4,7 @@ Delegates to BG3MacModManager (if installed) or uses pure Python fallback.
 """
 
 from .installer import install_local, uninstall, get_mod_info
-from .registry import list_mods, get_mod
+from .registry import list_mods, get_mod, set_mod_enabled
 from .modsettings import (
     read_mod_order,
     add_mod,
@@ -23,6 +23,7 @@ __all__ = [
     # registry
     "list_mods",
     "get_mod",
+    "set_mod_enabled",
     # modsettings
     "read_mod_order",
     "add_mod",

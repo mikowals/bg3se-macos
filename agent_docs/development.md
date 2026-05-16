@@ -156,14 +156,14 @@ echo '!help' > ~/Library/Application\ Support/BG3SE/commands.txt
 | `!test [filter]` | Run Tier 1 regression tests (93 tests, always works). Optional filter: `!test Stats`, `!test Parity` |
 | `!test_ingame [filter]` | Run Tier 2 tests (54 tests, needs loaded save). Tests Entity, Level, Audio, Net, IMGUI, StaticData, Osi dispatch, EntityEvents, Parity |
 
-### Test Suite (213 tests)
+### Test Suite (229 tests)
 
-Four tiers, 213 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
+Four tiers, 229 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
 
 | Tier | Command | Tests | Requires |
 |------|---------|-------|----------|
 | 0 | `./build/bin/bg3se_test_tier0` | 41 | None (CI-safe) |
-| H | `PYTHONPATH=tools pytest tests/harness/ -v` | 25 | Python 3.12 (CI-safe) |
+| H | `PYTHONPATH=tools pytest tests/harness/ -v` | 41 | Python 3.12 (CI-safe) |
 | 1 | `!test` | 93 | Console only (no save needed) |
 | 2 | `!test_ingame` | 54 | Loaded save game |
 

@@ -196,7 +196,7 @@ tail -f "/Users/tomdimino/Library/Application Support/BG3SE/logs/latest.log"
 ls "/Users/tomdimino/Library/Application Support/BG3SE/logs/"
 ```
 
-Use `!test` to run Tier 1 regression tests (93 tests, always works). Use `!test_ingame` for Tier 2 tests (54 tests, needs loaded save). Use `Debug.*` helpers for memory probing. 66 offline tests (41 C + 25 pytest) run via CI.
+Use `!test` to run Tier 1 regression tests (93 tests, always works). Use `!test_ingame` for Tier 2 tests (54 tests, needs loaded save). Use `Debug.*` helpers for memory probing. 82 offline tests (41 C + 41 pytest) run via CI.
 
 ## Reverse Engineering
 
@@ -271,6 +271,7 @@ See @agent_docs/development.md for full checklist.
 @agent_docs/reference.md
 
 **On-demand (read when needed):**
+- `agent_docs/harness.md` - Harness capabilities, command groups, headless mode. Read when running CLI commands or testing.
 - `agent_docs/debugging-strategies.md` - Hypothesis-driven RE debugging
 - `agent_docs/ghidra.md` - Ghidra workflows and MCP usage
 - `agent_docs/acceleration.md` - Parity acceleration strategies

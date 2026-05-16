@@ -20,7 +20,13 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from bg3se_harness.config import HEALTH_FILE, MONITOR_LOG
-from bg3se_harness.launch import wait_for_socket, hide_window, restore_headless_graphics
+from bg3se_harness.launch import (
+    wait_for_socket,
+    hide_window,
+    move_window_offscreen,
+    quit_game,
+    restore_headless_graphics,
+)
 
 
 def _log(msg, stages):
@@ -89,10 +95,6 @@ def main():
         "started_at": time.time(),
     }))
 
-    # No persistent hide during boot — hiding too early prevents Metal
-    # from creating a drawable, stalling the game. Hide only after socket
-    # connects (see final hide block below).
-
     # Check if BG3SE dylib log appears (indicates injection worked)
     log_dir = os.path.expanduser("~/Library/Application Support/BG3SE/logs")
     latest_log = os.path.join(log_dir, "latest.log")
@@ -115,6 +117,16 @@ def main():
 
     if auto_dismiss:
         _log("auto_dismiss     BG3SE_AUTO_DISMISS_SPLASH=1 (in-process dismiss)", stages)
+
+    # Move window off-screen early so it's invisible during boot.
+    # Unlike hide/minimize, off-screen position doesn't stall Metal.
+    if headless:
+        time.sleep(5)
+        mr = move_window_offscreen()
+        if mr.get("success"):
+            _log("window_offscreen BG3 moved off-screen for headless boot", stages)
+        else:
+            _log(f"offscreen_failed {mr.get('error', 'unknown')}", stages)
 
     _log("socket_polling   waiting for SE socket to respond...", stages)
 
@@ -153,6 +165,9 @@ def main():
                 "hidden": False,
                 "reason": health.get("stage", "socket_not_connected"),
             }
+            if health.get("stage") != "process_exited":
+                _log("cancel_game      headless boot failed; force-quitting BG3", stages)
+                health["headless"]["cancel"] = quit_game(force=True)
             restore_reason = "background_socket_not_connected"
 
         restore_result = restore_headless_graphics(reason=restore_reason)

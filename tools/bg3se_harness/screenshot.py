@@ -30,21 +30,33 @@ JPEG_QUALITY = 80
 
 
 def get_window_id():
-    """Get BG3 window ID via osascript. Returns str or None."""
-    script = (
-        'tell application "System Events" to '
-        'get id of window 1 of process "Baldur\'s Gate 3"'
-    )
+    """Get BG3 CGWindowID via Quartz window list. Returns str or None.
+
+    BG3's process name in CGWindowList is 'bg3', not 'Baldur's Gate 3',
+    so System Events window ID lookup fails. We match by PID instead.
+    """
     try:
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True,
+        import Quartz
+        pid_r = subprocess.run(
+            ["pgrep", "-x", "Baldur's Gate 3"],
+            capture_output=True, text=True,
         )
-        if result.returncode == 0:
-            wid = result.stdout.strip()
-            if wid:
-                return wid
+        if pid_r.returncode != 0:
+            pid_r = subprocess.run(
+                ["pgrep", "-f", "Baldur.s.Gate.3"],
+                capture_output=True, text=True,
+            )
+        if pid_r.returncode != 0:
+            return None
+        bg3_pid = int(pid_r.stdout.strip().split()[0])
+        window_list = Quartz.CGWindowListCopyWindowInfo(
+            Quartz.kCGWindowListOptionAll, Quartz.kCGNullWindowID,
+        )
+        for w in window_list:
+            if w.get("kCGWindowOwnerPID", 0) == bg3_pid:
+                name = str(w.get("kCGWindowName", ""))
+                if name:
+                    return str(int(w.get("kCGWindowNumber", 0)))
     except Exception:
         pass
     return None
