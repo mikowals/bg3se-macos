@@ -8,6 +8,7 @@
 #include "template_manager.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
+#include "../core/version_detect.h"
 #include "../strings/fixed_string.h"
 #include "../hooks/arm64_hook.h"
 #include <string.h>
@@ -436,14 +437,23 @@ bool template_manager_init(void* main_binary_base) {
     memset(g_template.managers, 0, sizeof(g_template.managers));
     memset(g_template.template_counts, -1, sizeof(g_template.template_counts));
 
-    // Install auto-capture hooks
-    if (main_binary_base) {
+    // Install auto-capture hooks. These are inline Dobby CODE hooks at hardcoded
+    // main-binary offsets, valid only for the exact verified build. On a version
+    // mismatch the targets are stale and patching them corrupts unrelated game code
+    // (Issue #78 — crashed esv::hotbar::System on new-game load). Gate on an EXACT
+    // version match, like the functor and staticdata hooks. The lazy global-pointer
+    // reads (template_read_global_pointers) are pure data reads and stay active, so
+    // Ext.Template still degrades gracefully rather than crashing.
+    if (main_binary_base && version_detect_matches()) {
         bool hooks_ok = template_install_hooks(main_binary_base);
         if (hooks_ok) {
             log_message("[Template] Auto-capture hooks installed (waiting for game activity)");
         } else {
             log_message("[Template] Failed to install auto-capture hooks, falling back to Frida capture");
         }
+    } else if (main_binary_base) {
+        log_message("[Template] Auto-capture hooks SKIPPED (game version mismatch — "
+                    "code patching unsafe; using global-pointer reads only)");
     }
 
     g_template.initialized = true;

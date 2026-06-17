@@ -7,6 +7,7 @@
 #include "staticdata_manager.h"
 #include "../core/logging.h"
 #include "../core/safe_memory.h"
+#include "../core/version_detect.h"
 #include "../strings/fixed_string.h"
 #include "../hooks/arm64_hook.h"
 #include <dobby.h>
@@ -1042,6 +1043,23 @@ bool staticdata_manager_init(void *main_binary_base) {
     // Clear manager pointers
     memset(g_staticdata.managers, 0, sizeof(g_staticdata.managers));
     memset(g_staticdata.real_managers, 0, sizeof(g_staticdata.real_managers));
+
+    // Manager capture installs inline Dobby CODE hooks at hardcoded main-binary
+    // offsets (OFFSET_FEAT_GETFEATS, OFFSET_GET_*). Those offsets are only valid
+    // for the exact verified build (BG3_KNOWN_VERSION). On a version mismatch the
+    // targets are stale and DobbyHook overwrites whatever instructions now live
+    // there, corrupting unrelated game code — the root cause of the
+    // esv::hotbar::System crash on new-game load (Issue #78). Sentinel probes
+    // validate DATA reads, not code addresses, so a passing probe is NOT enough to
+    // make code patching safe; gate hook installation on an EXACT version match
+    // (same policy as functor hooks in main.c). Without the hooks the manager
+    // degrades gracefully — it reports 0 captured managers instead of crashing.
+    if (!version_detect_matches()) {
+        log_message("[StaticData] Manager hooks SKIPPED (game version mismatch — "
+                    "code patching unsafe; Ext.StaticData runs in degraded mode)");
+        g_staticdata.initialized = true;
+        return true;
+    }
 
     // Try to install ARM64-safe hook for FeatManager::GetFeats
     // This uses the skip-and-redirect strategy from Issue #44
