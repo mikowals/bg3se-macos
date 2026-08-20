@@ -325,10 +325,77 @@ int lua_ext_json_parse(lua_State *L) {
     return 1;
 }
 
+#define JSON_MAX_MATERIALIZE_DEPTH 32
+static void json_materialize(lua_State *L, int idx, int depth) {
+    idx = lua_absindex(L, idx);
+    int t = lua_type(L, idx);
+
+    if (depth > JSON_MAX_MATERIALIZE_DEPTH) {
+        lua_pushnil(L);
+        return;
+    }
+
+    if (t == LUA_TUSERDATA) {
+        if (luaL_getmetafield(L, idx, "__pairs") == LUA_TNIL) {
+            // Opaque userdata - no iteration; serializes to null later.
+            lua_pushvalue(L, idx);
+            return;
+        }
+        int top0 = lua_gettop(L) - 1;   // exclude the __pairs we just pushed
+        lua_pushvalue(L, idx);          // [__pairs, ud]
+        lua_call(L, 1, 3);              // [iter, state, ctrl]
+        int iter = top0 + 1, state = top0 + 2, ctrl = top0 + 3;
+        lua_newtable(L);                // [iter, state, ctrl, out]
+        int out = top0 + 4;
+        for (;;) {
+            lua_pushvalue(L, iter);
+            lua_pushvalue(L, state);
+            lua_pushvalue(L, ctrl);
+            lua_call(L, 2, 2);          // [..., out, key, value]
+            if (lua_isnil(L, -2)) {
+                lua_pop(L, 2);
+                break;
+            }
+            lua_pushvalue(L, -2);       // advance ctrl = key
+            lua_replace(L, ctrl);
+            json_materialize(L, -1, depth + 1);  // [..., key, value, plain]
+            lua_pushvalue(L, -3);       // key copy
+            lua_pushvalue(L, -2);       // plain copy
+            lua_rawset(L, out);         // out[key] = plain
+            lua_pop(L, 3);              // pop plain, value, key
+        }
+        // Collapse [iter, state, ctrl, out] -> just out at top0+1.
+        lua_replace(L, top0 + 1);       // out -> iter slot
+        lua_settop(L, top0 + 1);        // drop state, ctrl
+        return;
+    }
+
+    if (t == LUA_TTABLE) {
+        lua_newtable(L);                // out
+        int out = lua_gettop(L);
+        lua_pushnil(L);
+        while (lua_next(L, idx) != 0) {  // [out, key, value]
+            json_materialize(L, -1, depth + 1);  // [out, key, value, plain]
+            lua_pushvalue(L, -3);       // key copy
+            lua_pushvalue(L, -2);       // plain copy
+            lua_rawset(L, out);         // out[key] = plain
+            lua_pop(L, 2);              // pop plain + value, keep key for lua_next
+        }
+        return;                          // out left on top
+    }
+
+    // Primitive (or anything else): copy as-is.
+    lua_pushvalue(L, idx);
+}
+
 int lua_ext_json_stringify(lua_State *L) {
+    // Expand any proxy userdata into plain tables FIRST, before the buffer opens.
+    json_materialize(L, 1, 0);
+    int plainIdx = lua_gettop(L);
+
     luaL_Buffer b;
     luaL_buffinit(L, &b);
-    json_stringify_value(L, 1, &b);
+    json_stringify_value(L, plainIdx, &b);
     luaL_pushresult(&b);
     return 1;
 }

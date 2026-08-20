@@ -349,10 +349,16 @@ void persist_save_all(lua_State *L) {
             continue;
         }
 
+        // Capture the PersistentVars stack index BEFORE opening the buffer:
+        // luaL_buffinit() pushes a placeholder, so a lua_gettop() taken after
+        // it points at the placeholder rather than at the table -- and the
+        // serializer then wrote "null" over every mod's saved variables.
+        int pv_idx = lua_gettop(L);
+
         // Stringify PersistentVars
         luaL_Buffer b;
         luaL_buffinit(L, &b);
-        json_stringify_value(L, lua_gettop(L), &b);
+        json_stringify_value(L, pv_idx, &b);
         luaL_pushresult(&b);
 
         const char *json = lua_tostring(L, -1);
