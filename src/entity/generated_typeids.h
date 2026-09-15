@@ -5,7 +5,26 @@
  * Build identity: 4.1.1.7398727
  * Total components: 2004
  * Every VA below was resolved from its own exact mangled symbol.
- * Migration report: no baseline supplied
+ * Migration report:
+ *   Baseline 4.1.1.7209685: 1999
+ *   Current 4.1.1.7398727: 2004
+ *   Shared: 1998
+ *   Added (6):
+ *     + ls::ugc::CacheModDependenciesSingletonComponent
+ *     + ls::ugc::CacheModInfoSingletonComponent
+ *     + ls::ugc::CacheModListSingletonComponent
+ *     + ls::ugc::PendingModDependencyRequestSingletonComponent
+ *     + ls::ugc::PendingModInfoRequestSingletonComponent
+ *     + ls::ugc::PendingModListRequestSingletonComponent
+ *   Removed (1):
+ *     - ecl::mod::RequestItemInfoSingletonComponent
+ *   Shared address-delta families:
+ *     0x2ff30: 1689
+ *     0x2ffd8: 162
+ *     0x30668: 86
+ *     0x30278: 42
+ *     0x30660: 17
+ *     0x30010: 2
  */
 
 #ifndef GENERATED_TYPEIDS_H

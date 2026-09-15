@@ -46,13 +46,88 @@ Each entry includes:
   logged and yields `null` for that node without aborting the call. `_D()`
   dumps proxies through the same path.
 
+- **SpellMeta stride was 80, engine uses 96** (`src/entity/component_offsets.h`)
+  — `SpellContainer.Spells[n]` for n ≥ 2 pointed 16·(n−1) bytes short of the
+  real entry. Live-read on 4.1.1.7398727: consecutive `SpellId` FixedStrings at
+  +0x00, +0x60, +0xC0, +0x120 and a byte-identical 0x60 record. The
+  mageweaver fork's 0x60 claim was correct. Array elements now also expose
+  `SpellId`. (#102 fork triage)
+- **`entity.Uuid` resolved to nil** (`src/entity/generated_component_registry.c`,
+  generator `tools/extract_typeids.py`) — generated TypeId discovery never
+  copied the discovered index into the hand-written layout, so every layout
+  whose component is only in the generated list kept `componentTypeIndex 0`
+  (`ls::uuid::Component` discovered as 2082, layout 0). The generated path now
+  mirrors the curated one.
+- **Component GUID fields came out byte-reversed** (`src/entity/component_property.c`)
+  — `FIELD_TYPE_GUID`, `ELEM_TYPE_GUID` and the ClassInfo `ClassUUID`/
+  `SubClassUUID` formatters printed the 16 bytes in memory order, so
+  `entity.Uuid.EntityUuid` read `831cd0b4-e925-…` for the host whose canonical
+  id is `b4d01c83-25e9-…` and never matched `HandleToUuid()` or the Osiris
+  GUID. All property GUIDs now go through `guid_to_string()` (the same routine
+  `Ext.Entity.HandleToUuid` uses).
+- **`Transform.Translate` was nil, `Position` read the quaternion**
+  (`src/entity/entity_system.h`, `entity_system.c`) — the legacy
+  `TransformComponent` struct put position first, but the raw component on
+  7398727 holds the quaternion at +0x00, translation at +0x10 and scale at
+  +0x1c (Windows `ls::Transform` order). Struct reordered; the Lua table now
+  carries `Translate`/`RotationQuat` (Windows names) alongside the legacy
+  `Position`/`Rotation` keys.
+- **`Ext.Entity.GetAllEntitiesWithUuid()` returned `{}`** (`src/entity/entity_system.c`)
+  — the walk required `Keys.size == Values.size`, but `Values` is an
+  `UninitializedStaticArray` sized to the key capacity (live: 23,151 keys,
+  32,768 values), so the guard rejected every non-full map. Now walks the live
+  key count and only requires the value storage to cover it. The tier-2
+  `Wave7.Entity.GetEntitiesAroundPosition` zero-radius call also indexed the
+  `{x,y,z}` position table by integer; fixed.
+
+### Review follow-ups (Codex gpt-5.6-sol, three adversarial passes on the integration diff)
+
+- **PersistentVars save runs under a protected call**
+  (`src/lua/lua_persistentvars.c`) — the periodic save is entered from the
+  native Osiris tick with no Lua frame above it; a `__pairs` callback that
+  mutated the table under `lua_next` ("invalid key to 'next'"), a mod table
+  `__index` metamethod, or a `luaL_Buffer` allocation failure would have
+  longjmp'd through the game. The worker now runs via `lua_pcall`, reads
+  `PersistentVars` raw, and `persist_save_all()` returns whether every write
+  succeeded. A failed write keeps the dirty flag (retry at the save interval)
+  and `Ext.Vars.SyncPersistentVars()` returns the real status instead of
+  `true`.
+- **JSON serializer reserves stack per level** (`src/lua/lua_json.c`) — each
+  recursion level parks up to five values; 200 levels exceed `LUA_MINSTACK`.
+  `lua_checkstack()` per table/userdata level, fail-soft to `null`. Non-string
+  error objects (`error({code=1})`) are logged by type instead of passing a
+  NULL to `%s`.
+- **ARM64 dirty entry windows fail closed** (`src/hooks/arm64_decode.c`,
+  `arm64_decode.h`) — a PC-relative instruction inside the four-instruction
+  patch window now yields `safe_hook_offset = -1` (no relocation exists, so the
+  forward skip re-ran an unrelocated ADRP/branch in the trampoline). `TBNZ` is
+  now recognised (the 0x7F mask matched only `TBZ`). Closes #106. No live hook
+  changes: `GetFreeMessage` and `FeatManager::GetFeats` both have clean entry
+  windows on 7398727.
+- **Bitfields reject bits outside the type mask** (`src/enum/enum_ext.c`,
+  `src/enum/bitfield_lua.c`) — `AttributeFlags[0x800000]`, `AttributeFlags[-1]`
+  and `flags | 0x800000` are nil/error rather than userdata carrying undefined
+  bits.
+- **Tier-0 fixtures** — PersistentVars setup captures HOME before anything can
+  fail and publishes the temp tree only after the redirect; `mod_paths`
+  asserts the terminator before `strcmp`; pattern-scan and safe-memory comment
+  corrections.
+
 ### Changed
 
-- **Tier 0: 68 → 105 tests.** #103 adds 23 mutation-hardening cases
+- **Tier 0: 68 → 137 tests.** #103 adds 23 mutation-hardening cases
   (safe_memory, mod_paths, pattern_scan, entity_events); #101 adds 22 across
   five new suites; the integration pass adds 15 (JSON cycles/depth/fail-soft,
-  enum operands). PersistentVars fixture is hermetic (HOME restored, no
-  `system()`).
+  enum operands); the review follow-ups add 9 (callback-count and
+  rewind-across-realloc proofs, shared-proxy siblings, table→proxy cycle,
+  numeric-key golden, direct stack balance on every failure path, protected
+  save, raw mod-table read, failed-write dirty retention, bitfield mask, every
+  PC-relative form at every window index). PersistentVars fixture is hermetic
+  (HOME restored, no `system()`).
+- **`tests/harness/test_typeid_generation.py`** passes again: the frozen-binary
+  test passed `report`/`build_id` positionally after `system_types` was added
+  to `generate_header()`, and the committed generated files are regenerated
+  with the 7209685 → 7398727 migration report they were supposed to carry.
 
 ### Documentation
 

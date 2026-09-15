@@ -32,13 +32,17 @@ static int enum_type_index(lua_State *L) {
 
         // Verify value is valid for this enum type
         const char *label = enum_find_label(type_index, (uint64_t)value);
-        if (label || info->is_bitfield) {
-            // For bitfields, any combination of valid flags is allowed
-            if (info->is_bitfield) {
+        if (info->is_bitfield) {
+            // A bitfield accepts any combination of its valid flags -- and
+            // nothing else. A negative mask or a bit outside allowed_flags
+            // (AttributeFlags[0x800000], AttributeFlags[-1]) is nil, not a
+            // userdata carrying bits the engine never defined.
+            if (value >= 0 && ((uint64_t)value & ~info->allowed_flags) == 0) {
                 bitfield_push(L, (uint64_t)value, type_index);
-            } else {
-                enum_push(L, (uint64_t)value, type_index);
+                return 1;
             }
+        } else if (label) {
+            enum_push(L, (uint64_t)value, type_index);
             return 1;
         }
     }

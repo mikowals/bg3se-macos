@@ -1457,8 +1457,8 @@ Full debugging experience with breakpoints, stepping, and variable inspection.
 
 ### Testing
 - [x] Unit tests for Lua bindings (Wave 7 A/B/C-series, 2026-08-03: 114 Tier 1 + 110 Tier 2 in-game tests via BG3SE_AddTest; B/C-series adds `Parity.Types.CustomProps`, `Parity.Types.GetHashSetValueAt`, `Wave7.Osi.DBDelete`, `Wave7.Stats.AddEnumerationValue`, `Wave7.Entity.Tracing`, `Wave7.Entity.OnSystemUpdate`, `Diagnostic.Level.TileRawDebugInfo`, `Wave7.Entity.GetReplicationFlags`, and `Wave7.Level.RaycastAny`)
-- [x] Integration tests with mock game state (255 pytest Tier H tests, including harness lifecycle, offset audit, physics VMT audit + RaycastAny gating guard, and compat scenarios)
-- [x] Regression test suite (Wave 7 A/B/C-series, 2026-08-03: 544-test four-tier suite — 65 C Tier 0 + 255 pytest Tier H + 114 Tier 1 + 110 Tier 2; see docs/testing.md)
+- [x] Integration tests with mock game state (361 pytest Tier H tests, including harness lifecycle, offset audit, physics VMT audit + RaycastAny gating guard, and compat scenarios)
+- [x] Regression test suite (Wave 7 A/B/C-series, 2026-08-03: 544-test four-tier suite — 65 C Tier 0 + 255 pytest Tier H + 114 Tier 1 + 110 Tier 2; 2026-09-14: Tier 0 grew to 137 with #101/#103 and the review follow-ups and Tier H to 361, 722 total; see docs/testing.md)
 - [ ] Performance benchmarks (obsolete — not prioritized as a formal suite; `harness benchmark` command available for ad-hoc perf measurement)
 
 ### Documentation

@@ -711,11 +711,16 @@ static const ComponentLayoutDef g_EquipableComponent_Layout = {
 // SpellContainerComponent (eoc::spell::ContainerComponent)
 // From: BG3Extender/GameDefinitions/Components/Spell.h:117-122
 // Note: Contains Array<SpellMeta>, exposed as count for now
+// SpellMeta stride is 0x60 (96 bytes) on ARM64, not the 80 the Windows field
+// list suggests. Live-verified on 4.1.1.7398727 (2026-09-14): the SpellId
+// FixedString of consecutive entries sits at +0x00, +0x60, +0xC0, +0x120 and
+// the 0x60-byte record repeats byte-for-byte from +0x00..+0x5F; a read at
+// +0x50 lands mid-record (nil). docs/parity-100/LIVE-VERIFICATION-2026-09-14.md
 // ============================================================================
 
 static const ComponentPropertyDef g_SpellContainerComponent_Properties[] = {
-    // Array<SpellMeta> Spells at 0x00 - SpellMeta is 80 bytes
-    { "Spells",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_SPELL_META, 80 },
+    // Array<SpellMeta> Spells at 0x00 - SpellMeta is 96 bytes (0x60) on ARM64
+    { "Spells",     0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_SPELL_META, 96 },
     { "SpellCount", 0x0C, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size field
 };
 

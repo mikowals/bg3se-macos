@@ -113,6 +113,9 @@ TEST(pak_stem_boundary_exact_fit_and_one_over) {
 
     memset(backing, 0x5A, sizeof(backing));
     ASSERT_TRUE(mod_se_dir_from_pak_name("/m/Abc.pak", backing, DIR_LEN));
+    /* Terminator first: a missing-NUL mutant leaves 0x5A here, and strcmp
+     * would otherwise scan past the backing array before failing. */
+    ASSERT_EQ(backing[DIR_LEN - 1], '\0');
     ASSERT_STR_EQ(backing, "Abc");               /* 3 chars + NUL == 4 */
     ASSERT_EQ(backing[DIR_LEN], (char)0x5A);
 
@@ -129,6 +132,7 @@ TEST(entry_dir_boundary_exact_fit_and_one_over) {
     memset(backing, 0x5A, sizeof(backing));
     ASSERT_TRUE(mod_entry_se_config_dir(
         "Mods/Abc/ScriptExtender/Config.json", backing, DIR_LEN));
+    ASSERT_EQ(backing[DIR_LEN - 1], '\0');      /* terminator before strcmp */
     ASSERT_STR_EQ(backing, "Abc");
     ASSERT_EQ(backing[DIR_LEN], (char)0x5A);
 

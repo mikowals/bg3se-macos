@@ -2773,7 +2773,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "    if ne:GetIndex() == e:GetIndex() then found = true break end\n"
         "  end\n"
         "  assert(found, 'host should be within 5m of its own position')\n"
-        "  local none = Ext.Entity.GetEntitiesAroundPosition({pos[1], pos[2], pos[3]}, 0)\n"
+        "  local none = Ext.Entity.GetEntitiesAroundPosition({pos.x, pos.y, pos.z}, 0)\n"
         "  assert(#none == 0, 'zero radius should return no entities')\n"
         "end)\n";
 

@@ -51,7 +51,7 @@ typedef enum {
 typedef enum {
     ELEM_TYPE_UNKNOWN = 0,      // Raw bytes (element size required)
     ELEM_TYPE_SPELL_DATA,       // spell::SpellData (88 bytes on ARM64)
-    ELEM_TYPE_SPELL_META,       // spell::SpellMeta (80 bytes)
+    ELEM_TYPE_SPELL_META,       // spell::SpellMeta (96 bytes / 0x60 on ARM64, live-verified 7398727)
     ELEM_TYPE_STATUS_INFO,      // Generic status info
     ELEM_TYPE_GUID,             // Array of GUIDs
     ELEM_TYPE_FIXED_STRING,     // Array of FixedStrings (indices)

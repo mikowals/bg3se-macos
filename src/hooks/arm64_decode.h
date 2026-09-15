@@ -66,7 +66,7 @@
 #define ARM64_CBNZ_OP           0x35000000
 
 // TBZ/TBNZ - Test bit and branch
-#define ARM64_TBZ_MASK          0x7F000000
+#define ARM64_TBZ_MASK          0x7E000000   // bit 24 selects TBZ (0) / TBNZ (1)
 #define ARM64_TBZ_OP            0x36000000
 
 // B.cond - Conditional branch

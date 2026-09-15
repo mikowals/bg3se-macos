@@ -102,10 +102,11 @@ TEST(find_buffer_too_small) {
 
 /* ── AUDIT ADDITIONS ─────────────────────────────────────────────── */
 
-/* GAP: nothing exercised parse_pattern's rejection paths. Deleting both
- * `return NULL` validation arms (invalid hex + invalid character) left the
- * whole suite green, so a garbage pattern string would have silently produced
- * a pattern that scans for whatever sscanf happened to leave behind. */
+/* GAP: nothing exercised parse_pattern's rejection paths. Replacing the two
+ * rejection arms (invalid hex + invalid character) with accept-and-advance
+ * left the whole suite green, so a garbage pattern string would have silently
+ * produced a pattern whose invalid tokens encode as zero (`byte` is
+ * initialised before sscanf, so a failed parse leaves 0, not garbage). */
 TEST(parse_rejects_non_hex) {
     ASSERT_NULL(parse_pattern("ZZ"));
     ASSERT_NULL(parse_pattern("48 ZZ"));
@@ -131,7 +132,10 @@ TEST(parse_whitespace_only_is_null) {
 }
 
 /* Wildcard bytes must be zeroed as well as masked — a caller that hexdumps
- * pat->bytes would otherwise print uninitialised malloc contents. */
+ * pat->bytes would otherwise print uninitialised malloc contents. This pins
+ * the invariant rather than a reliably killed mutant: with the zeroing store
+ * deleted, the bytes are indeterminate malloc contents and may happen to be
+ * zero, so a plain build cannot guarantee the assertion flips. */
 TEST(parse_wildcard_zeroes_byte) {
     BytePattern *p = parse_pattern("?? ?? ??");
     ASSERT_NOT_NULL(p);

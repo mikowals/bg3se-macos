@@ -33,8 +33,15 @@ static int popcount64(uint64_t value) {
 static int64_t get_flag_value(lua_State *L, int idx, int type_index) {
     // Integer first: lua_isstring() is true for numbers too (coercion), so a
     // numeric operand would otherwise be looked up as the label "2" and fail.
+    // The integer must be a mask of this type's flags: a negative value or a
+    // bit outside allowed_flags is rejected (-1) like any other bad operand,
+    // so `flags | 0x800000` cannot mint a bitfield with undefined bits.
     if (lua_isinteger(L, idx)) {
-        return lua_tointeger(L, idx);
+        lua_Integer v = lua_tointeger(L, idx);
+        EnumTypeInfo *info = enum_registry_get(type_index);
+        if (v < 0) return -1;
+        if (info && ((uint64_t)v & ~info->allowed_flags) != 0) return -1;
+        return v;
     } else if (lua_type(L, idx) == LUA_TSTRING) {
         const char *label = lua_tostring(L, idx);
         return enum_find_value(type_index, label);

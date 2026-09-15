@@ -1678,7 +1678,9 @@ static void push_transform_component(lua_State *L, void *component) {
     lua_setfield(L, -2, "y");
     lua_pushnumber(L, transform->position[2]);
     lua_setfield(L, -2, "z");
-    lua_setfield(L, -2, "Position");
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -3, "Translate");   // Windows name (Transform.Translate)
+    lua_setfield(L, -2, "Position");    // macOS legacy alias
 
     // Rotation subtable (quaternion)
     lua_newtable(L);
@@ -1690,7 +1692,9 @@ static void push_transform_component(lua_State *L, void *component) {
     lua_setfield(L, -2, "z");
     lua_pushnumber(L, transform->rotation[3]);
     lua_setfield(L, -2, "w");
-    lua_setfield(L, -2, "Rotation");
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -3, "RotationQuat"); // Windows name
+    lua_setfield(L, -2, "Rotation");     // macOS legacy alias
 
     // Scale subtable
     lua_newtable(L);
@@ -2727,9 +2731,14 @@ static int lua_entity_get_all_with_uuid(lua_State *L) {
     }
     if (!mapping) return 1;
 
+    // Keys is an Array (size = live count); Values is an UninitializedStaticArray
+    // sized to the key CAPACITY, so the two sizes differ whenever the map is
+    // not exactly full. Live 7398727: Keys.size 23151, Keys.capacity 32768,
+    // Values.size 32768. Walk the live count and require the value storage to
+    // cover it.
     HashMapGuidEntityHandle *hashmap = (HashMapGuidEntityHandle *)mapping;
     if (!hashmap->Keys.buf || !hashmap->Values.buf ||
-        hashmap->Keys.size != hashmap->Values.size) {
+        hashmap->Keys.size > hashmap->Values.size) {
         return 1;
     }
 

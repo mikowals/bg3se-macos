@@ -241,8 +241,23 @@ static void json_sb_key(lua_State *L, int index, JsonBuf *jb) {
     jb_addchar(jb, '"');
 }
 
+// Error object at the top of the stack as loggable text. A mod may raise a
+// table (error({code=1})): lua_tostring() returns NULL for it, and handing
+// that to "%s" is undefined. Name the type instead; no metamethods are run.
+static const char *jb_errmsg(lua_State *L) {
+    if (lua_type(L, -1) == LUA_TSTRING) return lua_tostring(L, -1);
+    return lua_typename(L, lua_type(L, -1));
+}
+
+// Every recursion level parks a few values on the Lua stack (lua_next's
+// key/value, an iterator triple for __pairs userdata). A C function is only
+// guaranteed LUA_MINSTACK free slots, so reserve per level and fail soft to
+// null when the stack cannot grow, rather than trip an API-check assert or
+// run on incidental headroom.
+#define JSON_STACK_PER_LEVEL 8
+
 static void json_sb_table(lua_State *L, int index, JsonBuf *jb, int depth) {
-    if (depth > JSON_MAX_DEPTH) { jb_addstring(jb, "null"); return; }
+    if (depth > JSON_MAX_DEPTH || !lua_checkstack(L, JSON_STACK_PER_LEVEL)) { jb_addstring(jb, "null"); return; }
     const void *self = lua_topointer(L, index);
     if (jb_on_active_path(jb, self, depth)) { jb_addstring(jb, "null"); return; }
     jb->active[depth] = self;
@@ -292,7 +307,10 @@ static void json_sb_table(lua_State *L, int index, JsonBuf *jb, int depth) {
 // error is logged, that node becomes null, and serialization of its siblings
 // continues, so a single bad proxy inside PersistentVars cannot abort a save.
 static void json_sb_userdata(lua_State *L, int index, JsonBuf *jb, int depth) {
-    if (depth > JSON_MAX_DEPTH) { jb_addstring(jb, "null"); return; }
+    if (depth > JSON_MAX_DEPTH || !lua_checkstack(L, JSON_STACK_PER_LEVEL)) {
+        jb_addstring(jb, "null");
+        return;
+    }
     if (luaL_getmetafield(L, index, "__pairs") == LUA_TNIL) {
         jb_addstring(jb, "null");
         return;
@@ -308,7 +326,7 @@ static void json_sb_userdata(lua_State *L, int index, JsonBuf *jb, int depth) {
     int base = lua_gettop(L) - 1;               // slot below __pairs
     lua_pushvalue(L, index);                    // [__pairs, ud]
     if (lua_pcall(L, 1, 3, 0) != LUA_OK) {      // [iter, state, ctrl]
-        LOG_LUA_WARN("Json.Stringify: __pairs raised: %s", lua_tostring(L, -1));
+        LOG_LUA_WARN("Json.Stringify: __pairs raised: %s", jb_errmsg(L));
         lua_settop(L, base);
         jb_addstring(jb, "null");
         return;
@@ -323,7 +341,7 @@ static void json_sb_userdata(lua_State *L, int index, JsonBuf *jb, int depth) {
         lua_pushvalue(L, state);
         lua_pushvalue(L, ctrl);
         if (lua_pcall(L, 2, 2, 0) != LUA_OK) {  // [iter, state, ctrl, key, value]
-            LOG_LUA_WARN("Json.Stringify: __pairs iterator raised: %s", lua_tostring(L, -1));
+            LOG_LUA_WARN("Json.Stringify: __pairs iterator raised: %s", jb_errmsg(L));
             lua_settop(L, base);
             if (!jb->oom) { jb->len = mark; jb->data[mark] = '\0'; }
             jb_addstring(jb, "null");

@@ -313,21 +313,25 @@ void persist_restore_all(lua_State *L) {
 // Core: Save all persistent variables
 // ============================================================================
 
-void persist_save_all(lua_State *L) {
-    if (!s_initialized) {
-        persist_init();
-        if (!s_initialized) return;
-    }
+// The save worker. Runs under lua_pcall (see persist_save_all): anything in
+// here may raise -- a __index metamethod on a mod table, a __pairs callback
+// that mutates the table lua_next is walking ("invalid key to 'next'"), an
+// allocation failure inside luaL_Buffer -- and the periodic caller is native
+// (the Osiris tick hook in main.c), with no Lua frame above it to catch a
+// longjmp. Returns one boolean: true when every mod with PersistentVars was
+// written, false when any write failed.
+static int persist_save_all_worker(lua_State *L) {
+    int saved_count = 0;
+    int failed_count = 0;
 
     // Get global Mods table
     lua_getglobal(L, "Mods");
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
-        return;
+        lua_pushboolean(L, 1);
+        return 1;
     }
     int mods_idx = lua_gettop(L);
-
-    int saved_count = 0;
 
     // Iterate over Mods table
     lua_pushnil(L);
@@ -342,8 +346,11 @@ void persist_save_all(lua_State *L) {
         const char *modtable = lua_tostring(L, -2);
         int mod_idx = lua_gettop(L);
 
-        // Check if PersistentVars exists
-        lua_getfield(L, mod_idx, "PersistentVars");
+        // Check if PersistentVars exists. Raw read: a mod table with an
+        // __index metamethod (Mods.X = setmetatable({}, {__index = ...}))
+        // must not run mod code from the save path.
+        lua_pushstring(L, "PersistentVars");
+        lua_rawget(L, mod_idx);
         if (!lua_istable(L, -1)) {
             lua_pop(L, 2);  // Pop nil and mod table
             continue;
@@ -384,6 +391,7 @@ void persist_save_all(lua_State *L) {
             saved_count++;
         } else {
             LOG_PERSIST_ERROR("Failed to save: %s", safe_name);
+            failed_count++;
         }
 
         lua_pop(L, 3);  // Pop json string, PersistentVars, mod table
@@ -391,12 +399,38 @@ void persist_save_all(lua_State *L) {
 
     lua_pop(L, 1);  // Pop Mods table
 
-    s_dirty = 0;
-    s_lastSaveTime = get_monotonic_ms();
-
     if (saved_count > 0) {
         LOG_PERSIST_INFO("Save complete: %d mods", saved_count);
     }
+    lua_pushboolean(L, failed_count == 0);
+    return 1;
+}
+
+bool persist_save_all(lua_State *L) {
+    if (!s_initialized) {
+        persist_init();
+        if (!s_initialized) return false;
+    }
+
+    int base = lua_gettop(L);
+    bool ok = false;
+    lua_pushcfunction(L, persist_save_all_worker);
+    if (lua_pcall(L, 0, 1, 0) == LUA_OK) {
+        ok = lua_toboolean(L, -1);
+    } else {
+        const char *msg = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1)
+                                                          : lua_typename(L, lua_type(L, -1));
+        LOG_PERSIST_ERROR("Save aborted: %s", msg);
+    }
+    lua_settop(L, base);
+
+    // Only a fully successful pass clears the dirty flag: a failed write (or
+    // an aborted pass) stays dirty so the periodic save retries it. The
+    // timestamp always advances so a persistent failure is retried at the
+    // save interval rather than every tick.
+    if (ok) s_dirty = 0;
+    s_lastSaveTime = get_monotonic_ms();
+    return ok;
 }
 
 // ============================================================================
@@ -424,14 +458,17 @@ void persist_mark_dirty(void) {
     s_dirty = 1;
 }
 
+int persist_is_dirty(void) {
+    return s_dirty;
+}
+
 // ============================================================================
 // Lua API: Ext.Vars.SyncPersistentVars()
 // ============================================================================
 
 static int lua_vars_sync(lua_State *L) {
     LOG_PERSIST_INFO("SyncPersistentVars() called");
-    persist_save_all(L);
-    lua_pushboolean(L, 1);
+    lua_pushboolean(L, persist_save_all(L));
     return 1;
 }
 

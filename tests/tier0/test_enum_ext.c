@@ -261,6 +261,37 @@ TEST(enum_eq_accepts_integer_operand) {
     lua_close(L);
 }
 
+// A bitfield is a combination of ITS flags. Bits outside allowed_flags
+// (AttributeFlags spans 0x7fffff) and negative masks must not mint a userdata
+// carrying bits the engine never defined -- neither through the index nor
+// through an operator. Valid combinations still work.
+TEST(bitfield_rejects_bits_outside_mask) {
+    lua_State *L = make_state();
+    ASSERT_NOT_NULL(L);
+
+    char t[64] = {0};
+    ASSERT_TRUE(eval_string(L, "return type(Ext.Enums.AttributeFlags[0x800000])", t, sizeof t));
+    ASSERT_STR_EQ(t, "nil");
+    ASSERT_TRUE(eval_string(L, "return type(Ext.Enums.AttributeFlags[-1])", t, sizeof t));
+    ASSERT_STR_EQ(t, "nil");
+    ASSERT_TRUE(eval_string(L,
+        "local ok = pcall(function() return Ext.Enums.AttributeFlags[0x2] | 0x800000 end)\n"
+        "return tostring(ok)", t, sizeof t));
+    ASSERT_STR_EQ(t, "false");
+    ASSERT_TRUE(eval_string(L,
+        "local ok = pcall(function() return Ext.Enums.AttributeFlags[0x2] & -1 end)\n"
+        "return tostring(ok)", t, sizeof t));
+    ASSERT_STR_EQ(t, "false");
+
+    long long v = -1;
+    ASSERT_TRUE(eval_int(L, "return Ext.Enums.AttributeFlags[0x7fffff].__Value", &v));
+    ASSERT_EQ(v, 0x7fffff);
+    ASSERT_TRUE(eval_int(L, "return (Ext.Enums.AttributeFlags[0x2] | 0x400000).__Value", &v));
+    ASSERT_EQ(v, 0x400002);
+
+    lua_close(L);
+}
+
 // ---------------------------------------------------------------------------
 
 void register_enum_ext_tests(void) {
@@ -277,4 +308,5 @@ void register_enum_ext_tests(void) {
     RUN_TEST(bitfield_bor_accepts_integer_operand);
     RUN_TEST(bitfield_bor_numeric_string_is_rejected);
     RUN_TEST(enum_eq_accepts_integer_operand);
+    RUN_TEST(bitfield_rejects_bits_outside_mask);
 }

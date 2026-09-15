@@ -277,7 +277,11 @@ TEST(json_stringify_raising_pairs_is_null_and_does_not_abort) {
 
     ASSERT_EQ(luaL_loadstring(L,
         "local ud = ...\n"
-        "debug.setmetatable(ud, { __pairs = function() error('proxy dead') end })\n"
+        "__pairs_calls = 0\n"
+        "debug.setmetatable(ud, { __pairs = function()\n"
+        "  __pairs_calls = __pairs_calls + 1\n"
+        "  error('proxy dead')\n"
+        "end })\n"
         "return { bad = ud, sibling = 'ok' }\n"), LUA_OK);
     lua_newuserdata(L, 1);
     ASSERT_EQ(lua_pcall(L, 1, 1, 0), LUA_OK);
@@ -286,6 +290,11 @@ TEST(json_stringify_raising_pairs_is_null_and_does_not_abort) {
     stringify_top(L, json, sizeof(json));
     ASSERT_NOT_NULL(strstr(json, "\"bad\":null"));
     ASSERT_NOT_NULL(strstr(json, "\"sibling\":\"ok\""));
+    /* The pre-rework serializer emitted null for any userdata WITHOUT
+     * consulting __pairs: this call count is what separates fail-soft from
+     * never-tried. */
+    lua_getglobal(L, "__pairs_calls");
+    ASSERT_EQ(lua_tointeger(L, -1), 1);
     lua_close(L);
 }
 
@@ -300,9 +309,11 @@ TEST(json_stringify_raising_iterator_rewinds_node) {
         "local mt = {}\n"
         "mt.__pairs = function(self)\n"
         "  local n = 0\n"
+        "  __iter_calls = 0\n"
         "  return function()\n"
         "    n = n + 1\n"
-        "    if n == 1 then return 'First', 1 end\n"
+        "    __iter_calls = n\n"
+        "    if n == 1 then return 'First', string.rep('x', 600) end\n"
         "    error('iterator dead')\n"
         "  end, self, nil\n"
         "end\n"
@@ -311,11 +322,129 @@ TEST(json_stringify_raising_iterator_rewinds_node) {
     lua_newuserdata(L, 1);
     ASSERT_EQ(lua_pcall(L, 1, 1, 0), LUA_OK);
 
-    char json[512];
+    /* The first yield emits >600 bytes before the iterator raises, so the
+     * rewind crosses at least one buffer reallocation (initial capacity 256):
+     * a stale-pointer or stale-length rewind would leave the payload behind. */
+    char json[2048];
     stringify_top(L, json, sizeof(json));
     ASSERT_NOT_NULL(strstr(json, "\"bad\":null"));
     ASSERT_NULL(strstr(json, "First"));
+    ASSERT_NULL(strstr(json, "xxxx"));
     ASSERT_NOT_NULL(strstr(json, "\"sibling\":\"ok\""));
+    ASSERT_TRUE(strlen(json) < 64);
+    lua_getglobal(L, "__iter_calls");
+    ASSERT_EQ(lua_tointeger(L, -1), 2);
+    lua_close(L);
+}
+
+/* The same proxy reached twice through sibling keys is a shared reference,
+ * not a cycle: the active-path guard must clear (or overwrite) the slot on
+ * exit so the second visit serializes in full. */
+TEST(json_stringify_shared_proxy_siblings_both_serialize) {
+    lua_State *L = luaL_newstate();
+    ASSERT_NOT_NULL(L);
+    luaL_openlibs(L);
+
+    push_proxy(L);
+    lua_setglobal(L, "__u");
+    char json[512];
+    stringify_chunk(L, "return { __u, __u }", json, sizeof(json));
+    /* Field order inside each object follows the per-state string hash seed,
+     * so count the fields rather than pin the bytes: both visits must carry
+     * both fields, and neither may have collapsed to null. */
+    int current = 0, max = 0;
+    for (const char *p = json; (p = strstr(p, "\"Current\":7")) != NULL; p++) current++;
+    for (const char *p = json; (p = strstr(p, "\"Max\":12")) != NULL; p++) max++;
+    ASSERT_EQ(current, 2);
+    ASSERT_EQ(max, 2);
+    ASSERT_NULL(strstr(json, "null"));
+    ASSERT_EQ(json[0], '[');
+    ASSERT_EQ(json[strlen(json) - 1], ']');
+    lua_close(L);
+}
+
+/* table -> userdata -> same table: the back-edge is the table, reached
+ * through a __pairs yield, and must terminate as null. */
+TEST(json_stringify_table_through_proxy_cycle_terminates) {
+    lua_State *L = luaL_newstate();
+    ASSERT_NOT_NULL(L);
+    luaL_openlibs(L);
+
+    char json[512];
+    ASSERT_EQ(luaL_loadstring(L,
+        "local ud = ...\n"
+        "local t = {}\n"
+        "debug.setmetatable(ud, { __pairs = function(self)\n"
+        "  local backing = { Back = t, N = 1 }\n"
+        "  return function(_, k) return next(backing, k) end, self, nil\n"
+        "end })\n"
+        "t.u = ud\n"
+        "return t\n"), LUA_OK);
+    lua_newuserdata(L, 1);
+    ASSERT_EQ(lua_pcall(L, 1, 1, 0), LUA_OK);
+    stringify_top(L, json, sizeof(json));
+    ASSERT_NOT_NULL(strstr(json, "\"Back\":null"));
+    ASSERT_NOT_NULL(strstr(json, "\"N\":1"));
+    ASSERT_TRUE(strlen(json) < 64);
+    lua_close(L);
+}
+
+/* Golden for the non-string key path: an integer key is emitted as a quoted
+ * decimal, byte-identical to the pre-rework serializer. */
+TEST(json_stringify_numeric_key_golden) {
+    lua_State *L = luaL_newstate();
+    ASSERT_NOT_NULL(L);
+    luaL_openlibs(L);
+
+    char json[128];
+    stringify_chunk(L, "return {[2] = 'x'}", json, sizeof(json));
+    ASSERT_STR_EQ(json, "{\"2\":\"x\"}");
+    lua_close(L);
+}
+
+/* Failure paths, measured on json_stringify_value directly (no Lua call
+ * boundary to hide a leaked slot): a missing __pairs, a raising __pairs and a
+ * raising iterator each leave the stack exactly as found. */
+static void assert_direct_stringify_balanced(lua_State *L, const char *chunk,
+                                             const char *expect_substr) {
+    ASSERT_EQ(luaL_loadstring(L, chunk), LUA_OK);
+    lua_newuserdata(L, 1);
+    ASSERT_EQ(lua_pcall(L, 1, 1, 0), LUA_OK);
+    int top = lua_gettop(L);
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    json_stringify_value(L, top, &b);
+    luaL_pushresult(&b);
+    ASSERT_EQ(lua_gettop(L), top + 1);
+    ASSERT_NOT_NULL(strstr(lua_tostring(L, -1), expect_substr));
+    lua_pop(L, 2);
+}
+
+TEST(json_stringify_failure_paths_are_stack_balanced) {
+    lua_State *L = luaL_newstate();
+    ASSERT_NOT_NULL(L);
+    luaL_openlibs(L);
+
+    assert_direct_stringify_balanced(L,
+        "local ud = ...\n"
+        "return { opaque = ud }\n", "\"opaque\":null");
+    assert_direct_stringify_balanced(L,
+        "local ud = ...\n"
+        "debug.setmetatable(ud, { __pairs = function() error({ code = 1 }) end })\n"
+        "return { bad = ud }\n", "\"bad\":null");
+    assert_direct_stringify_balanced(L,
+        "local ud = ...\n"
+        "debug.setmetatable(ud, { __pairs = function(self)\n"
+        "  return function() error('dead') end, self, nil\n"
+        "end })\n"
+        "return { bad = ud }\n", "\"bad\":null");
+    assert_direct_stringify_balanced(L,
+        "local ud = ...\n"
+        "debug.setmetatable(ud, { __pairs = function(self)\n"
+        "  return function() return nil end, self, nil\n"
+        "end })\n"
+        "return { empty = ud }\n", "\"empty\":{}");
+    ASSERT_EQ(lua_gettop(L), 0);
     lua_close(L);
 }
 
@@ -352,5 +481,9 @@ void register_json_proxy_tests(void) {
     RUN_TEST(json_stringify_proxy_cycle_is_null_backedge);
     RUN_TEST(json_stringify_raising_pairs_is_null_and_does_not_abort);
     RUN_TEST(json_stringify_raising_iterator_rewinds_node);
+    RUN_TEST(json_stringify_shared_proxy_siblings_both_serialize);
+    RUN_TEST(json_stringify_table_through_proxy_cycle_terminates);
+    RUN_TEST(json_stringify_numeric_key_golden);
+    RUN_TEST(json_stringify_failure_paths_are_stack_balanced);
     RUN_TEST(json_stringify_proxy_is_stack_balanced);
 }

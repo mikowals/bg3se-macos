@@ -16,11 +16,13 @@ from extract_typeids import (
     curated_authority,
     extract_component_contexts,
     extract_replication_contexts,
+    extract_system_contexts,
     generate_header,
     generate_registration_code,
     migration_report,
     one_frame_authority,
     supported_replication_contexts,
+    supported_system_contexts,
 )
 
 
@@ -109,6 +111,9 @@ def test_typeid_frozen_binary_migration_and_committed_outputs() -> None:
     replication = supported_replication_contexts(
         extract_replication_contexts(NEW_BINARY, NEW_BUILD)
     )
+    system_types = supported_system_contexts(
+        extract_system_contexts(NEW_BINARY, NEW_BUILD)
+    )
 
     assert len(component_surface(old_records)) == 1999
     assert len(surface) == 2004
@@ -162,15 +167,18 @@ def test_typeid_frozen_binary_migration_and_committed_outputs() -> None:
     assert all(record.raw_mangled_symbol for _, record in replication)
     assert all(record.build_id == NEW_BUILD for _, record in replication)
 
-    expected_header = generate_header(surface, replication, report, NEW_BUILD)
+    assert len(system_types) == 73
+    expected_header = generate_header(
+        surface, replication, system_types, report=report, build_id=NEW_BUILD
+    )
     expected_registry = generate_registration_code(
-        surface, curated_only, one_frame, report, NEW_BUILD
+        surface, curated_only, one_frame, report=report, build_id=NEW_BUILD
     )
     assert expected_header == generate_header(
-        surface, replication, report, NEW_BUILD
+        surface, replication, system_types, report=report, build_id=NEW_BUILD
     )
     assert expected_registry == generate_registration_code(
-        surface, curated_only, one_frame, report, NEW_BUILD
+        surface, curated_only, one_frame, report=report, build_id=NEW_BUILD
     )
     assert (ROOT / "src/entity/generated_typeids.h").read_text() == expected_header
     assert (

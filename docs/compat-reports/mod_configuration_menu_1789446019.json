@@ -1,0 +1,1186 @@
+{
+  "scenario": "mcm",
+  "run_id": "mcm_1789446019",
+  "description": "MCM (Mod Configuration Menu) compatibility test. P0 gate mod \u2014 500+ configurable mods depend on it.",
+  "report_dir": "/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/.reports/mcm_1789446019",
+  "steps": [
+    {
+      "success": true,
+      "requires_mcm": false,
+      "mcm_injected": false,
+      "original_mods": [
+        "mcm"
+      ],
+      "effective_mods": [
+        "mcm"
+      ],
+      "error_type": null,
+      "error": null,
+      "name": "dependency_resolution"
+    },
+    {
+      "success": true,
+      "passed": 16,
+      "total": 20,
+      "critical_checks": [
+        "bg3_app_bundle",
+        "bg3_binary",
+        "se_dylib_deployed",
+        "mods_directory"
+      ],
+      "error_type": null,
+      "error": null,
+      "name": "prerequisites"
+    },
+    {
+      "success": true,
+      "mod_name": "Mod Configuration Menu",
+      "uuid": "755a8a72-407f-4f0d-9a33-274ac0f0b53d",
+      "state": "installed_enabled",
+      "name": "mod_check_mcm"
+    },
+    {
+      "success": true,
+      "fixture": "vetting_base",
+      "restored_to": "/Users/tomdimino/Documents/Larian Studios/Baldur's Gate 3/PlayerProfiles/Public/Savegames/Story/Tamarru-62412511136__Ebonlake Grotto - 27h 19m",
+      "save_name": "Tamarru-62412511136__Ebonlake Grotto - 27h 19m",
+      "backup": "/Users/tomdimino/.config/bg3se-harness/save_fixtures/_restore_backups/Tamarru-62412511136__Ebonlake Grotto - 27h 19m__20260915_002020_108097",
+      "name": "restore_save"
+    },
+    {
+      "success": true,
+      "socket_connected": true,
+      "se_version": "{\"pid\":91150,\"version\":\"0.43.0\",\"game_state\":\"Running\",\"session_init\":\"complete\",\"stats_ready\":true,\"image\":\"/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib\"}\n>",
+      "elapsed_ms": 33133,
+      "dismiss_attempts": 0,
+      "phases": [
+        {
+          "t": 0.0,
+          "phase": "waiting_for_socket",
+          "detail": "timeout=180s"
+        },
+        {
+          "t": 0.0,
+          "phase": "dylib_loaded"
+        },
+        {
+          "t": 0.5,
+          "phase": "socket_listening"
+        },
+        {
+          "t": 3.3,
+          "phase": "socket_responded",
+          "detail": "3327ms"
+        },
+        {
+          "t": 3.3,
+          "phase": "session_waiting",
+          "detail": "game_state=Init, grace=240s"
+        },
+        {
+          "t": 29.9,
+          "phase": "menu_watchdog_action",
+          "detail": "#1 in_process_click"
+        },
+        {
+          "t": 33.1,
+          "phase": "session_loaded",
+          "detail": "game_state=Running"
+        }
+      ],
+      "identity": {
+        "pid": 91150,
+        "version": "0.43.0",
+        "game_state": "Running",
+        "session_init": "complete",
+        "stats_ready": true,
+        "image": "/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib"
+      },
+      "identity_pid": 91150,
+      "peer_pid": 91150,
+      "watchdog_actions": [
+        {
+          "attempt": 1,
+          "method": "in_process_click",
+          "success": true,
+          "buttons": [],
+          "menu_detected": false,
+          "ocr_error": null,
+          "purpose": "dismiss_splash",
+          "target_fraction": {
+            "x": 0.5,
+            "y": 0.5,
+            "label": "splash_center"
+          },
+          "clicks": [
+            {
+              "success": true,
+              "view_fraction": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "method": "in_process_click",
+              "response": "click posted at (0.500, 0.500)\n>",
+              "target_fraction": {
+                "x": 0.5,
+                "y": 0.5,
+                "label": "splash_center"
+              }
+            }
+          ],
+          "geometry": {
+            "pid": 91150,
+            "window_id": 70269,
+            "quartz": {
+              "id": 70269,
+              "owner_pid": 91150,
+              "owner_name": "bg3",
+              "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+              "bounds": {
+                "x": 0,
+                "y": 25,
+                "width": 1920,
+                "height": 977
+              },
+              "layer": 0,
+              "alpha": 1.0,
+              "is_onscreen": true,
+              "memory_usage": 2288
+            },
+            "system_events": null,
+            "screenshot": {
+              "width": 1920,
+              "height": 977
+            },
+            "main_screen_scale": 1.0,
+            "quartz_screenshot_scale": {
+              "x": 1.0,
+              "y": 1.0
+            }
+          },
+          "t": 22.8,
+          "stalled_for_s": 22.2
+        }
+      ],
+      "session_loaded": true,
+      "pid": 91150,
+      "attempt": 2,
+      "attempts": [
+        {
+          "socket_connected": true,
+          "session_loaded": false,
+          "stage": "menu_stalled",
+          "elapsed_ms": 122045,
+          "dismiss_attempts": 0,
+          "phases": [
+            {
+              "t": 0.0,
+              "phase": "waiting_for_socket",
+              "detail": "timeout=180s"
+            },
+            {
+              "t": 0.0,
+              "phase": "dylib_loaded"
+            },
+            {
+              "t": 0.5,
+              "phase": "socket_listening"
+            },
+            {
+              "t": 3.3,
+              "phase": "socket_responded",
+              "detail": "3315ms"
+            },
+            {
+              "t": 3.3,
+              "phase": "session_waiting",
+              "detail": "game_state=Init, grace=240s"
+            },
+            {
+              "t": 27.1,
+              "phase": "menu_watchdog_action",
+              "detail": "#1 in_process_click"
+            },
+            {
+              "t": 39.8,
+              "phase": "menu_watchdog_action",
+              "detail": "#2 in_process_click"
+            },
+            {
+              "t": 64.6,
+              "phase": "menu_watchdog_action",
+              "detail": "#3 in_process_click"
+            },
+            {
+              "t": 73.2,
+              "phase": "menu_watchdog_action",
+              "detail": "#4 in_process_click"
+            },
+            {
+              "t": 98.4,
+              "phase": "menu_watchdog_action",
+              "detail": "#5 in_process_click"
+            },
+            {
+              "t": 107.5,
+              "phase": "menu_watchdog_action",
+              "detail": "#6 in_process_click"
+            },
+            {
+              "t": 122.0,
+              "phase": "menu_stalled",
+              "detail": "122045ms"
+            }
+          ],
+          "watchdog_actions": [
+            {
+              "attempt": 1,
+              "method": "in_process_click",
+              "success": true,
+              "buttons": [],
+              "menu_detected": false,
+              "ocr_error": null,
+              "purpose": "dismiss_splash",
+              "target_fraction": {
+                "x": 0.5,
+                "y": 0.5,
+                "label": "splash_center"
+              },
+              "clicks": [
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.500, 0.500)\n>",
+                  "target_fraction": {
+                    "x": 0.5,
+                    "y": 0.5,
+                    "label": "splash_center"
+                  }
+                }
+              ],
+              "geometry": {
+                "pid": 88202,
+                "window_id": 70261,
+                "quartz": {
+                  "id": 70261,
+                  "owner_pid": 88202,
+                  "owner_name": "bg3",
+                  "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+                  "bounds": {
+                    "x": 0,
+                    "y": 25,
+                    "width": 1920,
+                    "height": 977
+                  },
+                  "layer": 0,
+                  "alpha": 1.0,
+                  "is_onscreen": true,
+                  "memory_usage": 2288
+                },
+                "system_events": null,
+                "screenshot": {
+                  "width": 1920,
+                  "height": 977
+                },
+                "main_screen_scale": 1.0,
+                "quartz_screenshot_scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              },
+              "t": 21.9,
+              "stalled_for_s": 21.4
+            },
+            {
+              "attempt": 2,
+              "method": "in_process_click",
+              "success": true,
+              "buttons": [],
+              "menu_detected": false,
+              "ocr_error": null,
+              "purpose": "click_continue",
+              "target_fraction": {
+                "x": 0.293,
+                "y": 0.38,
+                "label": "continue_button_center"
+              },
+              "clicks": [
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.293,
+                    "y": 0.38
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.293, 0.380)\n>",
+                  "target_fraction": {
+                    "x": 0.293,
+                    "y": 0.38,
+                    "label": "continue_button_center"
+                  }
+                }
+              ],
+              "geometry": {
+                "pid": 88202,
+                "window_id": 70261,
+                "quartz": {
+                  "id": 70261,
+                  "owner_pid": 88202,
+                  "owner_name": "bg3",
+                  "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+                  "bounds": {
+                    "x": 0,
+                    "y": 25,
+                    "width": 1920,
+                    "height": 977
+                  },
+                  "layer": 0,
+                  "alpha": 1.0,
+                  "is_onscreen": true,
+                  "memory_usage": 2288
+                },
+                "system_events": null,
+                "screenshot": {
+                  "width": 1920,
+                  "height": 977
+                },
+                "main_screen_scale": 1.0,
+                "quartz_screenshot_scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              },
+              "t": 34.6,
+              "stalled_for_s": 34.1
+            },
+            {
+              "attempt": 3,
+              "method": "in_process_click",
+              "success": true,
+              "buttons": [],
+              "menu_detected": false,
+              "ocr_error": null,
+              "purpose": "check_mod_verification_boxes",
+              "target_fraction": [
+                {
+                  "x": 0.783,
+                  "y": 0.306,
+                  "label": "mod_verification_checkbox_1"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.381,
+                  "label": "mod_verification_checkbox_2"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.456,
+                  "label": "mod_verification_checkbox_3"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.531,
+                  "label": "mod_verification_checkbox_4"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.606,
+                  "label": "mod_verification_checkbox_5"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.681,
+                  "label": "mod_verification_checkbox_6"
+                }
+              ],
+              "clicks": [
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.306
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.306)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.306,
+                    "label": "mod_verification_checkbox_1"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.381
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.381)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.381,
+                    "label": "mod_verification_checkbox_2"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.456
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.456)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.456,
+                    "label": "mod_verification_checkbox_3"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.531
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.531)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.531,
+                    "label": "mod_verification_checkbox_4"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.606
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.606)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.606,
+                    "label": "mod_verification_checkbox_5"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.681
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.681)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.681,
+                    "label": "mod_verification_checkbox_6"
+                  }
+                }
+              ],
+              "geometry": {
+                "pid": 88202,
+                "window_id": 70261,
+                "quartz": {
+                  "id": 70261,
+                  "owner_pid": 88202,
+                  "owner_name": "bg3",
+                  "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+                  "bounds": {
+                    "x": 0,
+                    "y": 25,
+                    "width": 1920,
+                    "height": 977
+                  },
+                  "layer": 0,
+                  "alpha": 1.0,
+                  "is_onscreen": true,
+                  "memory_usage": 2288
+                },
+                "system_events": null,
+                "screenshot": {
+                  "width": 1920,
+                  "height": 977
+                },
+                "main_screen_scale": 1.0,
+                "quartz_screenshot_scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              },
+              "t": 46.9,
+              "stalled_for_s": 46.4
+            },
+            {
+              "attempt": 4,
+              "method": "in_process_click",
+              "success": true,
+              "buttons": [],
+              "menu_detected": false,
+              "ocr_error": null,
+              "purpose": "click_mod_verification_start_game",
+              "target_fraction": {
+                "x": 0.443,
+                "y": 0.889,
+                "label": "mod_verification_start_game_center"
+              },
+              "clicks": [
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.443,
+                    "y": 0.889
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.443, 0.889)\n>",
+                  "target_fraction": {
+                    "x": 0.443,
+                    "y": 0.889,
+                    "label": "mod_verification_start_game_center"
+                  }
+                }
+              ],
+              "geometry": {
+                "pid": 88202,
+                "window_id": 70261,
+                "quartz": {
+                  "id": 70261,
+                  "owner_pid": 88202,
+                  "owner_name": "bg3",
+                  "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+                  "bounds": {
+                    "x": 0,
+                    "y": 25,
+                    "width": 1920,
+                    "height": 977
+                  },
+                  "layer": 0,
+                  "alpha": 1.0,
+                  "is_onscreen": true,
+                  "memory_usage": 2288
+                },
+                "system_events": null,
+                "screenshot": {
+                  "width": 1920,
+                  "height": 977
+                },
+                "main_screen_scale": 1.0,
+                "quartz_screenshot_scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              },
+              "t": 67.9,
+              "stalled_for_s": 67.4
+            },
+            {
+              "attempt": 5,
+              "method": "in_process_click",
+              "success": true,
+              "buttons": [],
+              "menu_detected": false,
+              "ocr_error": null,
+              "purpose": "check_mod_verification_boxes",
+              "target_fraction": [
+                {
+                  "x": 0.783,
+                  "y": 0.306,
+                  "label": "mod_verification_checkbox_1"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.381,
+                  "label": "mod_verification_checkbox_2"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.456,
+                  "label": "mod_verification_checkbox_3"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.531,
+                  "label": "mod_verification_checkbox_4"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.606,
+                  "label": "mod_verification_checkbox_5"
+                },
+                {
+                  "x": 0.783,
+                  "y": 0.681,
+                  "label": "mod_verification_checkbox_6"
+                }
+              ],
+              "clicks": [
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.306
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.306)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.306,
+                    "label": "mod_verification_checkbox_1"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.381
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.381)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.381,
+                    "label": "mod_verification_checkbox_2"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.456
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.456)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.456,
+                    "label": "mod_verification_checkbox_3"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.531
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.531)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.531,
+                    "label": "mod_verification_checkbox_4"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.606
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.606)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.606,
+                    "label": "mod_verification_checkbox_5"
+                  }
+                },
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.783,
+                    "y": 0.681
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.783, 0.681)\n>",
+                  "target_fraction": {
+                    "x": 0.783,
+                    "y": 0.681,
+                    "label": "mod_verification_checkbox_6"
+                  }
+                }
+              ],
+              "geometry": {
+                "pid": 88202,
+                "window_id": 70261,
+                "quartz": {
+                  "id": 70261,
+                  "owner_pid": 88202,
+                  "owner_name": "bg3",
+                  "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+                  "bounds": {
+                    "x": 0,
+                    "y": 25,
+                    "width": 1920,
+                    "height": 977
+                  },
+                  "layer": 0,
+                  "alpha": 1.0,
+                  "is_onscreen": true,
+                  "memory_usage": 2288
+                },
+                "system_events": null,
+                "screenshot": {
+                  "width": 1920,
+                  "height": 977
+                },
+                "main_screen_scale": 1.0,
+                "quartz_screenshot_scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              },
+              "t": 80.7,
+              "stalled_for_s": 80.2
+            },
+            {
+              "attempt": 6,
+              "method": "in_process_click",
+              "success": true,
+              "buttons": [],
+              "menu_detected": false,
+              "ocr_error": null,
+              "purpose": "click_mod_verification_start_game",
+              "target_fraction": {
+                "x": 0.443,
+                "y": 0.899,
+                "label": "mod_verification_start_game_lower_center"
+              },
+              "clicks": [
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.443,
+                    "y": 0.899
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.443, 0.899)\n>",
+                  "target_fraction": {
+                    "x": 0.443,
+                    "y": 0.899,
+                    "label": "mod_verification_start_game_lower_center"
+                  }
+                }
+              ],
+              "geometry": {
+                "pid": 88202,
+                "window_id": 70261,
+                "quartz": {
+                  "id": 70261,
+                  "owner_pid": 88202,
+                  "owner_name": "bg3",
+                  "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+                  "bounds": {
+                    "x": 0,
+                    "y": 25,
+                    "width": 1920,
+                    "height": 977
+                  },
+                  "layer": 0,
+                  "alpha": 1.0,
+                  "is_onscreen": true,
+                  "memory_usage": 2288
+                },
+                "system_events": null,
+                "screenshot": {
+                  "width": 1920,
+                  "height": 977
+                },
+                "main_screen_scale": 1.0,
+                "quartz_screenshot_scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              },
+              "t": 102.3,
+              "stalled_for_s": 101.8
+            }
+          ],
+          "diagnostics": {
+            "latest_log": "/Users/tomdimino/Library/Application Support/BG3SE/logs/bg3se_2026-09-15_00-20-20.log",
+            "latest_log_tail": "[2026-09-15 00:22:18.343] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:18.443] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:18.443] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:18.544] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:18.544] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:18.643] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:18.643] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:18.743] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:18.743] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:18.845] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:18.845] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:18.945] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:18.945] [INFO ] [Console] Client 0 connected\n[2026-09-15 00:22:18.945] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.045] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.045] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.143] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.143] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.243] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.243] [DEBUG] [Console] ! identity\n[2026-09-15 00:22:19.243] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.344] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.344] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.443] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.443] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.543] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.543] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.645] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.645] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.743] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.743] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.843] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.843] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:19.943] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:19.943] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.043] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.043] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.143] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.143] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.244] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.244] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.343] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.343] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.444] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.444] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.543] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.543] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.643] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.643] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.743] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.743] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.843] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.843] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:20.943] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:20.943] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.043] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.043] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.143] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.143] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.243] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.243] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.344] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.344] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.443] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.443] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.543] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.543] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.643] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.643] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.743] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.743] [INFO ] [Console] Client 0 disconnected\n[2026-09-15 00:22:21.743] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.844] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.844] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:21.943] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:21.943] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:22.043] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:22.043] [INFO ] [Lua    ] Lua context changed: Server -> None\n[2026-09-15 00:22:22.143] [INFO ] [Lua    ] Lua context changed: None -> Server\n[2026-09-15 00:22:22.143] [INFO ] [Lua    ] Lua context changed: Server -> None",
+            "latest_log_analysis": {
+              "has_problem_markers": false,
+              "problem_lines": []
+            },
+            "geometry": {
+              "pid": 88202,
+              "window_id": 70261,
+              "quartz": {
+                "id": 70261,
+                "owner_pid": 88202,
+                "owner_name": "bg3",
+                "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+                "bounds": {
+                  "x": 0,
+                  "y": 25,
+                  "width": 1920,
+                  "height": 977
+                },
+                "layer": 0,
+                "alpha": 1.0,
+                "is_onscreen": true,
+                "memory_usage": 2288
+              },
+              "system_events": null,
+              "main_screen_scale": 1.0,
+              "screenshot": {
+                "width": 1920,
+                "height": 977
+              },
+              "quartz_screenshot_scale": {
+                "x": 1.0,
+                "y": 1.0
+              }
+            },
+            "menu_detect": {
+              "buttons": [],
+              "raw_ocr": [],
+              "error": null,
+              "geometry": {
+                "pid": 88202,
+                "window_id": 70261,
+                "quartz": {
+                  "id": 70261,
+                  "owner_pid": 88202,
+                  "owner_name": "bg3",
+                  "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+                  "bounds": {
+                    "x": 0,
+                    "y": 25,
+                    "width": 1920,
+                    "height": 977
+                  },
+                  "layer": 0,
+                  "alpha": 1.0,
+                  "is_onscreen": true,
+                  "memory_usage": 2288
+                },
+                "system_events": null,
+                "screenshot": {
+                  "width": 1920,
+                  "height": 977
+                },
+                "main_screen_scale": 1.0,
+                "quartz_screenshot_scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              },
+              "debug_image": {
+                "success": true,
+                "path": "/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/.screenshots/boot-stall-1789446142.png",
+                "method": "jxa_appkit"
+              }
+            }
+          },
+          "pid": 88202,
+          "attempt": 1,
+          "retrying": true,
+          "retry_cleanup": {
+            "reason": "boot_retry_1_menu_stalled",
+            "cancel": {
+              "success": true,
+              "method": "force"
+            }
+          }
+        },
+        {
+          "socket_connected": true,
+          "se_version": "{\"pid\":91150,\"version\":\"0.43.0\",\"game_state\":\"Running\",\"session_init\":\"complete\",\"stats_ready\":true,\"image\":\"/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib\"}\n>",
+          "elapsed_ms": 33133,
+          "dismiss_attempts": 0,
+          "phases": [
+            {
+              "t": 0.0,
+              "phase": "waiting_for_socket",
+              "detail": "timeout=180s"
+            },
+            {
+              "t": 0.0,
+              "phase": "dylib_loaded"
+            },
+            {
+              "t": 0.5,
+              "phase": "socket_listening"
+            },
+            {
+              "t": 3.3,
+              "phase": "socket_responded",
+              "detail": "3327ms"
+            },
+            {
+              "t": 3.3,
+              "phase": "session_waiting",
+              "detail": "game_state=Init, grace=240s"
+            },
+            {
+              "t": 29.9,
+              "phase": "menu_watchdog_action",
+              "detail": "#1 in_process_click"
+            },
+            {
+              "t": 33.1,
+              "phase": "session_loaded",
+              "detail": "game_state=Running"
+            }
+          ],
+          "identity": {
+            "pid": 91150,
+            "version": "0.43.0",
+            "game_state": "Running",
+            "session_init": "complete",
+            "stats_ready": true,
+            "image": "/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib"
+          },
+          "identity_pid": 91150,
+          "peer_pid": 91150,
+          "watchdog_actions": [
+            {
+              "attempt": 1,
+              "method": "in_process_click",
+              "success": true,
+              "buttons": [],
+              "menu_detected": false,
+              "ocr_error": null,
+              "purpose": "dismiss_splash",
+              "target_fraction": {
+                "x": 0.5,
+                "y": 0.5,
+                "label": "splash_center"
+              },
+              "clicks": [
+                {
+                  "success": true,
+                  "view_fraction": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "method": "in_process_click",
+                  "response": "click posted at (0.500, 0.500)\n>",
+                  "target_fraction": {
+                    "x": 0.5,
+                    "y": 0.5,
+                    "label": "splash_center"
+                  }
+                }
+              ],
+              "geometry": {
+                "pid": 91150,
+                "window_id": 70269,
+                "quartz": {
+                  "id": 70269,
+                  "owner_pid": 91150,
+                  "owner_name": "bg3",
+                  "name": "Baldur's Gate 3 (1920x949) - (Metal) - (6 + 6 WT)",
+                  "bounds": {
+                    "x": 0,
+                    "y": 25,
+                    "width": 1920,
+                    "height": 977
+                  },
+                  "layer": 0,
+                  "alpha": 1.0,
+                  "is_onscreen": true,
+                  "memory_usage": 2288
+                },
+                "system_events": null,
+                "screenshot": {
+                  "width": 1920,
+                  "height": 977
+                },
+                "main_screen_scale": 1.0,
+                "quartz_screenshot_scale": {
+                  "x": 1.0,
+                  "y": 1.0
+                }
+              },
+              "t": 22.8,
+              "stalled_for_s": 22.2
+            }
+          ],
+          "session_loaded": true,
+          "pid": 91150,
+          "attempt": 2
+        }
+      ],
+      "reused_running_game": false,
+      "name": "launch_health"
+    },
+    {
+      "success": true,
+      "pid": 91150,
+      "expected_pid": 91150,
+      "session_init": "complete",
+      "raw_output": "{\"pid\":91150,\"version\":\"0.43.0\",\"game_state\":\"Running\",\"session_init\":\"complete\",\"stats_ready\":true,\"image\":\"/Users/tomdimino/Library/Application Support/Steam/steamapps/common/Baldurs Gate 3/Baldur's Gate 3.app/Contents/MacOS/libbg3se.dylib\"}",
+      "error": null,
+      "name": "identity"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(Ext.Utils.Version() ~= nil, 'SE loaded')",
+      "name": "assertion_0"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.IMGUI) == 'table', 'Ext.IMGUI namespace available')",
+      "name": "assertion_1"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.IMGUI.NewWindow) == 'function', 'Ext.IMGUI.NewWindow exists')",
+      "name": "assertion_2"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.ModEvents) == 'table', 'Ext.ModEvents namespace available')",
+      "name": "assertion_3"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.ModEvents['BG3SECompat']['Probe'].Subscribe) == 'function', 'ModEvents per-mod event object exposes Subscribe')",
+      "name": "assertion_4"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.RegisterNetListener) == 'function', 'Ext.RegisterNetListener exists')",
+      "name": "assertion_5"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.Vars) == 'table', 'Ext.Vars namespace available')",
+      "name": "assertion_6"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.Net) == 'table', 'Ext.Net namespace available')",
+      "name": "assertion_7"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.Mod.IsModLoaded) == 'function', 'Ext.Mod.IsModLoaded exists')",
+      "name": "assertion_8"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert((function() for _,u in ipairs(Ext.Mod.GetLoadOrder()) do local m=Ext.Mod.GetMod(u); local n=string.gsub(string.lower((m and m.Info and m.Info.Name) or ''), '[%s_%-]', ''); if string.find(n, 'configurationmenu', 1, true) then return true end end return false end)(), 'Mod Configuration Menu present in load order')",
+      "name": "assertion_9"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert((function() local size=Ext.IMGUI.GetViewportSize(); return type(size) == 'table' and type(size[1]) == 'number' and size[1] > 0 and type(size[2]) == 'number' and size[2] > 0 end)(), 'IMGUI viewport query executes')",
+      "name": "assertion_10"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.Net.Version()) == 'number', 'network version query executes')",
+      "name": "assertion_11"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Ext.Vars.IsPersistentVarsLoaded()) == 'boolean', 'persistent variable state query executes')",
+      "name": "assertion_12"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert((function() local event=Ext.ModEvents['BG3SECompat']['MCM']; local fired=false; local id=event:Subscribe(function() fired=true end); event:Throw({}); event:Unsubscribe(id); return fired end)(), 'ModEvents roundtrip executes')",
+      "name": "assertion_13"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(pcall(Ext.RegisterNetListener, '_bg3se_compat_mcm_probe', function() end), 'network listener registration executes')",
+      "name": "assertion_14"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes')",
+      "name": "assertion_15"
+    },
+    {
+      "success": true,
+      "output": "BG3SE_COMPAT_PASS",
+      "lua": "assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes')",
+      "name": "assertion_16"
+    },
+    {
+      "success": true,
+      "mod": "Mod Configuration Menu",
+      "since": "2026-09-15 00:20:20",
+      "errors": [],
+      "warnings": [],
+      "error_type": null,
+      "error": null,
+      "name": "log_scan_mcm"
+    },
+    {
+      "success": true,
+      "path": "/Users/tomdimino/Desktop/Programming/game-modding/bg3/bg3se-macos/.reports/mcm_1789446019/screenshot.jpg",
+      "width": 1568,
+      "height": 798,
+      "tokens_est": 1668,
+      "size_bytes": 350896,
+      "format": "jpeg",
+      "name": "screenshot"
+    },
+    {
+      "success": true,
+      "crash_time": 1789446147.5974905,
+      "last_log_lines": [
+        "[2026-09-15 00:23:02.419] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-09-15 00:23:02.519] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-09-15 00:23:02.519] [DEBUG] [Console] > local __ok, __err = pcall(function() assert(pcall(Ext.RegisterNetListener, '_bg3se_compat_mcm_probe', function() end), 'network listener registration executes') end); Ext.Print(__ok and 'BG3SE_COMPAT_PASS' or ('BG3SE_COMPAT_FAIL: ' .. tostring(__err)))",
+        "[2026-09-15 00:23:02.519] [DEBUG] [Events ] Registered net listener for channel '_bg3se_compat_mcm_probe' (ref=162)",
+        "[2026-09-15 00:23:02.519] [INFO ] [Lua    ] BG3SE_COMPAT_PASS",
+        "[2026-09-15 00:23:02.520] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-09-15 00:23:02.619] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-09-15 00:23:02.619] [DEBUG] [Console] > local __ok, __err = pcall(function() assert((function() local id=Ext.Events.Tick:Subscribe(function() end); local ok=type(id) == 'number'; Ext.Events.Tick:Unsubscribe(id); return ok end)(), 'Tick event subscribe roundtrip executes') end); Ext.Print(__ok and 'BG3SE_COMPAT_PASS' or ('BG3SE_COMPAT_FAIL: ' .. tostring(__err)))",
+        "[2026-09-15 00:23:02.619] [INFO ] [Lua    ] BG3SE_COMPAT_PASS",
+        "[2026-09-15 00:23:02.620] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-09-15 00:23:02.718] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-09-15 00:23:02.718] [DEBUG] [Console] > local __ok, __err = pcall(function() assert(type(Osi.DB_Players:Get(nil)) == 'table', 'loaded-save player database query executes') end); Ext.Print(__ok and 'BG3SE_COMPAT_PASS' or ('BG3SE_COMPAT_FAIL: ' .. tostring(__err)))",
+        "[2026-09-15 00:23:02.718] [DEBUG] [Osiris ] Osi DB (Facts): 4 rows, 1 cols",
+        "[2026-09-15 00:23:02.718] [INFO ] [Lua    ] BG3SE_COMPAT_PASS",
+        "[2026-09-15 00:23:02.718] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-09-15 00:23:02.817] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-09-15 00:23:02.818] [INFO ] [Console] Client 1 disconnected",
+        "[2026-09-15 00:23:02.818] [INFO ] [Lua    ] Lua context changed: Server -> Client",
+        "[2026-09-15 00:23:02.918] [INFO ] [Lua    ] Lua context changed: Client -> Server",
+        "[2026-09-15 00:23:02.918] [INFO ] [Lua    ] Lua context changed: Server -> Client"
+      ],
+      "name": "crashlog"
+    },
+    {
+      "success": true,
+      "method": "graceful",
+      "name": "quit_game"
+    }
+  ],
+  "started_at": "2026-09-15 00:20:19",
+  "mods": [
+    "mcm"
+  ],
+  "mod_state_changed": false,
+  "success": true,
+  "summary": "27/27 steps passed",
+  "finished_at": "2026-09-15 00:23:04"
+}

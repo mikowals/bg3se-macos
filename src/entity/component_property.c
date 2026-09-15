@@ -19,6 +19,7 @@
 #pragma clang diagnostic pop
 #endif
 
+#include "guid_lookup.h"       // guid_to_string: the engine's canonical GUID text
 #include "../core/safe_memory.h"
 #include "../core/logging.h"
 #include "../lifetime/lifetime.h"
@@ -27,6 +28,23 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+
+// Push a 16-byte engine Guid at addr as its canonical string, or nil if the
+// read fails. One formatter for every GUID-typed field and element: the
+// engine's text form is little-endian per group (guid_to_string, the inverse
+// of guid_parse). Printing the bytes in memory order produced a string with
+// every group byte-reversed ("831cd0b4-e925-..." for host b4d01c83-25e9-...),
+// which no Osi.* or Ext.Entity.* call would accept (2026-09-14 live session).
+static void push_guid_at(lua_State *L, uintptr_t addr) {
+    Guid guid;
+    if (safe_memory_read((mach_vm_address_t)addr, &guid, sizeof(guid))) {
+        char buf[64];
+        guid_to_string(&guid, buf);
+        lua_pushstring(L, buf);
+    } else {
+        lua_pushnil(L);
+    }
+}
 
 // Lua headers
 #include "../../lib/lua/src/lua.h"
@@ -373,19 +391,7 @@ int component_property_read_def(lua_State *L, void *componentPtr,
 
         case FIELD_TYPE_GUID: {
             // GUID is 16 bytes, format as string
-            uint8_t guid[16] = {0};
-            if (safe_memory_read((mach_vm_address_t)addr, guid, 16)) {
-                char buf[64];
-                snprintf(buf, sizeof(buf),
-                        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                        guid[0], guid[1], guid[2], guid[3],
-                        guid[4], guid[5], guid[6], guid[7],
-                        guid[8], guid[9], guid[10], guid[11],
-                        guid[12], guid[13], guid[14], guid[15]);
-                lua_pushstring(L, buf);
-            } else {
-                lua_pushnil(L);
-            }
+            push_guid_at(L, (uintptr_t)addr);
             return 1;
         }
 
@@ -988,19 +994,7 @@ static int array_proxy_push_element(lua_State *L, ArrayProxy *proxy, void *buf, 
 
     switch (proxy->elemType) {
         case ELEM_TYPE_GUID: {
-            uint8_t guid[16] = {0};
-            if (safe_memory_read((mach_vm_address_t)elemAddr, guid, 16)) {
-                char buf[64];
-                snprintf(buf, sizeof(buf),
-                        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                        guid[0], guid[1], guid[2], guid[3],
-                        guid[4], guid[5], guid[6], guid[7],
-                        guid[8], guid[9], guid[10], guid[11],
-                        guid[12], guid[13], guid[14], guid[15]);
-                lua_pushstring(L, buf);
-            } else {
-                lua_pushnil(L);
-            }
+            push_guid_at(L, (uintptr_t)elemAddr);
             return 1;
         }
 
@@ -1031,31 +1025,19 @@ static int array_proxy_push_element(lua_State *L, ArrayProxy *proxy, void *buf, 
             lua_createtable(L, 0, 5);
 
             // ClassUUID at offset 0
-            uint8_t classGuid[16] = {0};
-            if (safe_memory_read((mach_vm_address_t)elemAddr, classGuid, 16)) {
-                char guidBuf[64];
-                snprintf(guidBuf, sizeof(guidBuf),
-                        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                        classGuid[0], classGuid[1], classGuid[2], classGuid[3],
-                        classGuid[4], classGuid[5], classGuid[6], classGuid[7],
-                        classGuid[8], classGuid[9], classGuid[10], classGuid[11],
-                        classGuid[12], classGuid[13], classGuid[14], classGuid[15]);
-                lua_pushstring(L, guidBuf);
+            push_guid_at(L, (uintptr_t)elemAddr);
+            if (!lua_isnil(L, -1)) {
                 lua_setfield(L, -2, "ClassUUID");
+            } else {
+                lua_pop(L, 1);
             }
 
             // SubClassUUID at offset 16
-            uint8_t subclassGuid[16] = {0};
-            if (safe_memory_read((mach_vm_address_t)(elemAddr + 16), subclassGuid, 16)) {
-                char guidBuf[64];
-                snprintf(guidBuf, sizeof(guidBuf),
-                        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                        subclassGuid[0], subclassGuid[1], subclassGuid[2], subclassGuid[3],
-                        subclassGuid[4], subclassGuid[5], subclassGuid[6], subclassGuid[7],
-                        subclassGuid[8], subclassGuid[9], subclassGuid[10], subclassGuid[11],
-                        subclassGuid[12], subclassGuid[13], subclassGuid[14], subclassGuid[15]);
-                lua_pushstring(L, guidBuf);
+            push_guid_at(L, (uintptr_t)(elemAddr + 16));
+            if (!lua_isnil(L, -1)) {
                 lua_setfield(L, -2, "SubClassUUID");
+            } else {
+                lua_pop(L, 1);
             }
 
             // Level at offset 32
@@ -1125,8 +1107,10 @@ static int array_proxy_push_element(lua_State *L, ArrayProxy *proxy, void *buf, 
             lua_pushinteger(L, proxy->elemSize);
             lua_setfield(L, -2, "__size");
 
-            // For SpellData, try to extract the SpellId (first field is SpellId struct)
-            if (proxy->elemType == ELEM_TYPE_SPELL_DATA) {
+            // SpellData and SpellMeta both start with a SpellId struct whose
+            // first field is the prototype FixedString: expose its index.
+            if (proxy->elemType == ELEM_TYPE_SPELL_DATA ||
+                proxy->elemType == ELEM_TYPE_SPELL_META) {
                 // SpellId is at offset 0, contains FixedString at 0x00
                 uint32_t spellId = 0;
                 if (safe_memory_read_u32((mach_vm_address_t)elemAddr, &spellId)) {

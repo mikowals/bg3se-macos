@@ -16,6 +16,7 @@
 #define BG3SE_LUA_PERSISTENTVARS_H
 
 #include <lua.h>
+#include <stdbool.h>
 #include <lauxlib.h>
 
 #ifdef __cplusplus
@@ -53,7 +54,7 @@ void persist_restore_all(lua_State *L);
  *
  * @param L Lua state
  */
-void persist_save_all(lua_State *L);
+bool persist_save_all(lua_State *L);
 
 /**
  * Check for dirty vars and save periodically.
@@ -94,6 +95,11 @@ int persist_is_loaded(void);
  * Called when mod sets PersistentVars.
  */
 void persist_mark_dirty(void);
+
+/**
+ * Whether unsaved PersistentVars changes are pending (test/diagnostic hook).
+ */
+int persist_is_dirty(void);
 
 #ifdef __cplusplus
 }

@@ -206,7 +206,7 @@ tail -f "/Users/tomdimino/Library/Application Support/BG3SE/logs/latest.log"
 ls "/Users/tomdimino/Library/Application Support/BG3SE/logs/"
 ```
 
-Use `!test` to run Tier 1 regression tests (114 tests, always works). Use `!test_ingame` for Tier 2 tests (110 tests, needs loaded save). Use `!identity` to verify pid + session readiness before trusting live results. Use `Debug.*` helpers for memory probing. 320 offline tests (65 C + 255 pytest) run via CI; all four tiers total 544 tests.
+Use `!test` to run Tier 1 regression tests (114 tests, always works). Use `!test_ingame` for Tier 2 tests (110 tests, needs loaded save). Use `!identity` to verify pid + session readiness before trusting live results. Use `Debug.*` helpers for memory probing. 498 offline tests (137 C + 361 pytest) run via CI; all four tiers total 722 tests.
 
 ## Reverse Engineering
 
@@ -217,7 +217,7 @@ For RE sessions, adopt the **Meridian** persona (see `agent_docs/meridian-person
 
 ## Key Offsets (Ghidra-verified)
 
-**Build 4.1.1.7398727 (current — migrated offline 2026-08-04, arm64 LC_UUID `0C51CAED-6D60-3DCD-9299-8519C92631B0`; Phase 5 live verification pending).** All singletons and functions resolve from the per-version table in `src/core/offset_table.c` (rows: 6995620, 7209685, 7398727), audited every run by `tests/harness/test_offset_audit.py` (283+ checks against the installed binary's exact nm symbols). Gates still closed on 7398727: ECS system update (stale system-TypeIds), savegame hook, RaycastAny UUID, ValueList Insert (`VALUELIST_INSERT_VERIFIED_BUILD`). Evidence: `ghidra/offsets/ADDRESS_MIGRATION_7398727.md`, `VALUELIST_REGISTRY_7398727.md`, `ABI_REVIEW_7398727.md`.
+**Build 4.1.1.7398727 (current — migrated offline 2026-08-04, arm64 LC_UUID `0C51CAED-6D60-3DCD-9299-8519C92631B0`; Phase 5 live verification run 2026-09-15 — tier 1 114/114, tier 2 108/110, `docs/parity-100/LIVE-VERIFICATION-2026-09-14.md`).** All singletons and functions resolve from the per-version table in `src/core/offset_table.c` (rows: 6995620, 7209685, 7398727), audited every run by `tests/harness/test_offset_audit.py` (283+ checks against the installed binary's exact nm symbols). Gates still closed on 7398727: ECS system update (stale system-TypeIds), savegame hook, RaycastAny UUID, ValueList Insert (`VALUELIST_INSERT_VERIFIED_BUILD`). Evidence: `ghidra/offsets/ADDRESS_MIGRATION_7398727.md`, `VALUELIST_REGISTRY_7398727.md`, `ABI_REVIEW_7398727.md`.
 
 | Offset (7398727) | Purpose |
 |--------|---------|

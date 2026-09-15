@@ -74,10 +74,16 @@ typedef enum {
 // Transform Component
 // ============================================================================
 
+// ls::Transform on ARM64 (40 bytes), same order as the Windows reference and
+// the property layout in component_offsets.h: quaternion first, then the
+// translation, then the scale. Live-read on 4.1.1.7398727 (2026-09-14): host
+// at +0x00 (0, -0.723, 0, 0.691) unit quaternion, +0x10 (-44.8, 25.5, -138.6),
+// +0x1c (1, 1, 1). The previous position-first order returned the quaternion
+// as "Position" and the translation smeared across "Rotation".
 typedef struct {
-    float position[3];      // x, y, z
-    float rotation[4];      // quaternion (x, y, z, w)
-    float scale[3];         // x, y, z
+    float rotation[4];      // quaternion (x, y, z, w)   @ 0x00
+    float position[3];      // Translate x, y, z         @ 0x10
+    float scale[3];         // x, y, z                   @ 0x1c
 } TransformComponent;
 
 // ============================================================================

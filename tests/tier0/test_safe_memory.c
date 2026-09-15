@@ -110,7 +110,7 @@ TEST(check_address_own_stack) {
 
 /* ── AUDIT ADDITIONS ─────────────────────────────────────────────── */
 
-/* read_gpu_region_rejected below cannot distinguish the carveout pre-check
+/* read_gpu_region_rejected above cannot distinguish the carveout pre-check
  * from the kernel: 0x4900000000 is unmapped in this process, so
  * safe_memory_read() rejects it either way, and the whole 0x10..0x70 GB range
  * is reserved (mach_vm_allocate returns KERN_NO_SPACE at every probe). The

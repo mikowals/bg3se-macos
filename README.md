@@ -147,7 +147,7 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ 4-tier: 65 C (Tier 0) + 255 pytest (Tier H) + 114 `!test` (Tier 1) + 110 `!test_ingame` (Tier 2) = **544 tests**, Debug.* helpers |
+| Testing | ✅ 4-tier: 137 C (Tier 0) + 361 pytest (Tier H) + 114 `!test` (Tier 1) + 110 `!test_ingame` (Tier 2) = **722 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
 [^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute returns false and ExecuteFunctors is partial. AddEnumerationValue uses engine `ValueList::Insert` with FixedString interning and verified bidirectional readback (`ghidra/offsets/VALUELIST_INSERT.md`). Passive sync remains false after PARTIAL-GO recon because `Boosts` still needs an LTO closure ABI; interrupt sync remains false. TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data.

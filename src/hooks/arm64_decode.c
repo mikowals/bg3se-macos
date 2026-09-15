@@ -368,25 +368,33 @@ bool arm64_analyze_prologue(void* func_addr, int max_instructions, ARM64Prologue
 
     // PREFER offset 0. The 16-byte (4-instruction) patch window is copied verbatim
     // into the trampoline and run exactly once, so hooking at +0 is always correct
-    // when that window holds no PC-relative instruction — regardless of a PC-relative
+    // when that window holds no PC-relative instruction -- regardless of a PC-relative
     // instruction LATER in the prologue (e.g. a `bl` at +0x34). The forward-skip loop
     // above must NOT be used in that case: it re-runs the skipped prologue in the
     // trampoline, and a skipped side-effecting instruction (e.g. `stp x_,x_,[sp,#-imm]!`)
-    // then executes TWICE — double-decrementing SP and corrupting the callee's stack
+    // then executes TWICE -- double-decrementing SP and corrupting the callee's stack
     // frame. That was the confirmed root cause of the ExecuteStatsFunctors AttackTarget
-    // SIGSEGV (skip=4 re-ran `stp x28,x27,[sp,#-0x60]!` → crash in HitDesc::operator=).
-    // Only the leading-PC-relative case (window itself dirty) needs a nonzero offset.
+    // SIGSEGV (skip=4 re-ran `stp x28,x27,[sp,#-0x60]!` -> crash in HitDesc::operator=).
+    //
+    // A DIRTY window fails closed (-1). The forward skip is not a valid answer
+    // there either: the trampoline copies the skipped instructions unrelocated,
+    // so an ADRP/ADR/LDR-literal evaluates against the trampoline's PC and a
+    // B/BL/CBZ/TBZ branches to the wrong place (issue #106). Until relocation
+    // exists, arm64_safe_hook() refuses such targets and callers take their
+    // Dobby fallback. Both classifiers are consulted: the decoder's typed view
+    // and arm64_is_pc_relative(), which also knows ADR and LDR-literal.
     {
         int window = (max_instructions < 4) ? max_instructions : 4;
         bool window_clean = true;
         for (int w = 0; w < window; w++) {
             ARM64DecodedInsn d;
             arm64_decode_instruction(instructions[w], (uint64_t)func_addr + w * 4, &d);
-            if (d.is_pc_relative) { window_clean = false; break; }
+            if (d.is_pc_relative || arm64_is_pc_relative(instructions[w])) {
+                window_clean = false;
+                break;
+            }
         }
-        if (window_clean) {
-            out->safe_hook_offset = 0;
-        }
+        out->safe_hook_offset = window_clean ? 0 : -1;
     }
 
     return true;
