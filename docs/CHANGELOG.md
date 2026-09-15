@@ -13,6 +13,83 @@ Each entry includes:
 
 ---
 
+## [Unreleased] — v0.44.0 post-release review follow-ups (2026-09-15)
+
+Four independent reviews of the v0.44.0 diff (one Codex gpt-5.6-sol reviewer,
+three Claude reviewers scoped to StaticData, tooling, and tests/docs; verdicts
+BLOCK / SHIP WITH FIXES / SHIP WITH FIXES / SHIP) converged on the items below.
+Every finding was verified against the code before it was acted on. No
+behavior change on a healthy install; these close holes a garbage read or a
+failed installer step could have opened.
+
+### Fixed
+
+- **`Ext.StaticData` trusted every size it read from game memory**
+  (`src/staticdata/staticdata_manager.c`, `src/lua/lua_staticdata.c`) — a bank
+  count or `Array<Guid>` size from a stale or garbage header went straight into
+  `lua_createtable` and a read loop. Bank counts above 65536, GUID arrays above
+  4096 or larger than their capacity, and headmaster hash tables above 2^20
+  slots are now rejected as unreadable; the hash-chain walk checks every index
+  against the table size and stops after `size` hops; a GUID array is emitted
+  whole or the field is skipped, never truncated.
+- **Cached banks were never re-checked after a session reload** — the bank
+  pointers captured on the first SessionLoaded were kept for the process
+  lifetime. `staticdata_post_init_capture` now re-resolves every cached bank
+  through the headmaster table at each SessionLoaded and replaces any that
+  moved (stride re-measured). Not observed live; closes the one path where a
+  read could succeed on freed-but-mapped memory.
+- **Live stride detection could accept a field inside entry 0** — a candidate
+  stride must now also repeat at entry 2 when the bank holds three or more
+  entries, and nothing below 0x18 (vtable + ResourceUUID) is accepted.
+- **An initialized but empty bank read as unavailable** — `GetCount` returned
+  `-1` for `{buf=NULL, count=0}`; it now returns `0`.
+- **The Feat accessor hooks dereferenced game memory directly** — converted to
+  `safe_memory_*`; the unused TypeInfo-walking debug helper is removed.
+- **`guid_parse` accepted a non-hex low nibble** (`src/entity/guid_lookup.c`) —
+  `"1g"` parsed as `0x0f` because the helper's `-1` folded into `hi*16`. Each
+  nibble is validated on its own; tier-0 `parse_rejects_non_hex_characters`
+  covers it (Tier 0 141 → 142, 738 total).
+- **CMake SDK auto-detection ran after `project()` and never took effect**
+  (`CMakeLists.txt`) — the cache entry already existed, so the non-`FORCE` set
+  was ignored and builds carried no `-isysroot` (verified: empty
+  `CMAKE_OSX_SYSROOT` in `CMakeCache.txt`, none in `flags.make`). The block
+  now precedes `project()` and forces the value when the entry is empty. The
+  Objective-C++ probe is re-run on every configure instead of trusting a
+  cached pass across an Xcode change.
+- **`scripts/release/install.sh` patched the live game binary in place** — it
+  now patches a same-directory copy, verifies every slice links
+  `@loader_path/libbg3se.dylib`, ad-hoc signs and `codesign --verify`s it, and
+  only then swaps it in; an `EXIT` trap removes the copy on any failure, so
+  the game binary is never left half-written. The running-game guard uses
+  `pgrep -f` like the harness. The shipped v0.44.0 zip carries the previous
+  installer; both versions produce the same patched binary on success.
+
+### Added
+
+- **`CharacterCreationAppearanceVisual.field_3C`** — the unnamed `uint32_t` at
+  +0x3C in the Windows declaration is exposed for property-surface parity
+  (14 typed fields; `docs/api-reference.md`, tier-0 layout test updated).
+
+### Changed
+
+- The tier-0 CI job configures with `-DBG3SE_SKIP_TOOLCHAIN_PROBE=ON`; it never
+  compiles the Metal backend the probe protects.
+- `ghidra/offsets/STATICDATA_MANAGERS.md`: the pre-fix count is eight of nine
+  types unusable (only `ActionResource` held real entries), the stride and
+  revalidation rules are recorded, and the Dec 2025 Frida-capture API table is
+  marked historical. `scripts/release/package.sh` no longer calls the bundled
+  patcher universal (it is arm64).
+
+### Review notes not acted on
+
+- The whole StaticData capture path sits behind `version_detect_matches()`
+  (exact-baseline gate on the Get<T> hooks); a new game build with an
+  `offset_table.c` row but no baseline bump yields empty StaticData until the
+  hook prologues are re-verified. Pre-existing; tracked for the next
+  migration.
+- The Get<T> hooks publish `g_immutable_data_headmaster` and the bank pointers
+  without atomics, matching the other singleton-capture hooks. Pre-existing.
+
 ## [v0.44.0] - 2026-09-15 — First release on 4.1.1.7398727: PR integration, live verification, StaticData banks, toolchain probe
 
 **Category:** Release / Correctness / Tests | **Plan:** docs/plans/2026-09-14-001-chore-pr-issue-triage-v0430-plan.md | **PRs:** #101, #103 (@mikowals) | **Verified on:** BG3 4.1.1.7398727 (arm64 LC_UUID `0C51CAED-6D60-3DCD-9299-8519C92631B0`)

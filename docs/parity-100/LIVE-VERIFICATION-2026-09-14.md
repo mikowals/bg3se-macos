@@ -181,3 +181,21 @@ runtime logged and overrode the two stale constants still in the table
   `pcall` and `_P('TAG …')`, then read `logs/latest.log`.
 - Overwriting the deployed dylib while the game has it mapped is avoidable: quit first,
   then `cmake --build build`.
+
+## Post-release review follow-ups (2026-09-15, PID 43783)
+
+Four reviews of the v0.44.0 diff (Codex gpt-5.6-sol plus three scoped Claude
+reviewers) produced the hardening recorded under `[Unreleased]` in
+`docs/CHANGELOG.md`: bounded bank counts, GUID-array headers and hash-table
+walks, bank revalidation at every SessionLoaded, stride candidates confirmed at
+entry 2, `guid_parse` nibble validation, the CMake SDK detection moved before
+`project()`, and a transactional installer. Rebuilt dylib verified live on
+7398727 after one menu stall (PID 40630, SIGTERM + relaunch as before):
+`!test_ingame StaticData` **6/6**, all 10 banks resolved with the same strides
+as the release run (Feat 0x128, Race 0x168, Background 0x70, Origin 0x190,
+God 0x60, Class 0x110, Progression 0x148, ActionResource 0x60,
+FeatDescription 0x60, CCAV 0xA8), CCAV 1315 entries, 1306/1306 `RaceUUID`
+resolutions, `Human` round trip, `Gale Hair` through `Ext.Loca`. Offline:
+tier 0 142/142, tier H 368/368. The Origin and Progression configured
+constants were still the old estimates (0x180, 0x200) and are now the live
+values, so the stride-override log line no longer fires for them.

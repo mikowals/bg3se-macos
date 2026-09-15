@@ -64,6 +64,14 @@ static int hex_char_to_int(char c) {
     return -1;
 }
 
+// Helper: Parse one two-character hex pair; -1 if either character is not hex.
+// (Folding the -1 of a bad low nibble into hi*16 would accept "1g" as 0x0f.)
+static int hex_pair(char hi, char lo) {
+    int h = hex_char_to_int(hi);
+    int l = hex_char_to_int(lo);
+    return (h < 0 || l < 0) ? -1 : h * 16 + l;
+}
+
 // Helper: Parse N hex characters into a uint64_t
 static bool parse_hex_bytes(const char *str, int num_chars, uint64_t *out) {
     *out = 0;
@@ -109,35 +117,35 @@ bool guid_parse(const char *guid_str, Guid *out_guid) {
     // Parse each hex pair into the byte array
     // Section A: bytes 0-3 (little-endian, so reverse)
     for (int i = 0; i < 4; i++) {
-        int v = hex_char_to_int(guid_str[i*2]) * 16 + hex_char_to_int(guid_str[i*2 + 1]);
+        int v = hex_pair(guid_str[i*2], guid_str[i*2 + 1]);
         if (v < 0) return false;
         bytes[3 - i] = (uint8_t)v;  // Reverse for little-endian
     }
 
     // Section B: bytes 4-5 (little-endian, so reverse)
     for (int i = 0; i < 2; i++) {
-        int v = hex_char_to_int(guid_str[9 + i*2]) * 16 + hex_char_to_int(guid_str[9 + i*2 + 1]);
+        int v = hex_pair(guid_str[9 + i*2], guid_str[9 + i*2 + 1]);
         if (v < 0) return false;
         bytes[5 - i] = (uint8_t)v;  // Reverse for little-endian
     }
 
     // Section C: bytes 6-7 (little-endian, so reverse)
     for (int i = 0; i < 2; i++) {
-        int v = hex_char_to_int(guid_str[14 + i*2]) * 16 + hex_char_to_int(guid_str[14 + i*2 + 1]);
+        int v = hex_pair(guid_str[14 + i*2], guid_str[14 + i*2 + 1]);
         if (v < 0) return false;
         bytes[7 - i] = (uint8_t)v;  // Reverse for little-endian
     }
 
     // Section D: bytes 8-9 (big-endian in UUID, so no reverse)
     for (int i = 0; i < 2; i++) {
-        int v = hex_char_to_int(guid_str[19 + i*2]) * 16 + hex_char_to_int(guid_str[19 + i*2 + 1]);
+        int v = hex_pair(guid_str[19 + i*2], guid_str[19 + i*2 + 1]);
         if (v < 0) return false;
         bytes[8 + i] = (uint8_t)v;
     }
 
     // Section E: bytes 10-15 (big-endian in UUID, so no reverse)
     for (int i = 0; i < 6; i++) {
-        int v = hex_char_to_int(guid_str[24 + i*2]) * 16 + hex_char_to_int(guid_str[24 + i*2 + 1]);
+        int v = hex_pair(guid_str[24 + i*2], guid_str[24 + i*2 + 1]);
         if (v < 0) return false;
         bytes[10 + i] = (uint8_t)v;
     }

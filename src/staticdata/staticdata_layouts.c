@@ -29,6 +29,7 @@ static const StaticDataField s_cc_appearance_visual_fields[] = {
     { "RaceUUID",            SD_FIELD_GUID,             0x28 },
     { "BodyType",            SD_FIELD_U8,               0x38 },
     { "BodyShape",           SD_FIELD_U8,               0x39 },
+    { "field_3C",            SD_FIELD_U32,              0x3C },
     { "SlotName",            SD_FIELD_FIXEDSTRING,      0x40 },
     { "VisualResource",      SD_FIELD_GUID,             0x48 },
     { "HeadAppearanceUUID",  SD_FIELD_GUID,             0x58 },

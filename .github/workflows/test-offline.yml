@@ -10,7 +10,7 @@ jobs:
         with:
           submodules: true
       - name: Configure
-        run: mkdir build && cd build && cmake ..
+        run: mkdir build && cd build && cmake .. -DBG3SE_SKIP_TOOLCHAIN_PROBE=ON  # tier 0 never compiles the Metal backend the probe protects
       - name: Build test binary
         run: cmake --build build --target bg3se_test_tier0
       - name: Run tests

@@ -6,7 +6,7 @@
 #
 # Output: build/release/bg3se-macos-v<version>-universal.zip containing
 #   libbg3se.dylib     universal (arm64 + x86_64) build from build/lib/
-#   insert_dylib_bin   the vendored Mach-O patcher (universal)
+#   insert_dylib_bin   the vendored Mach-O patcher (arm64 only; Intel builds from source)
 #   install.sh         standalone installer (copies, patches, re-signs)
 #   README.txt         install and uninstall steps
 #

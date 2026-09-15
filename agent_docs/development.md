@@ -157,13 +157,13 @@ echo '!help' > ~/Library/Application\ Support/BG3SE/commands.txt
 | `!test_ingame [filter]` | Run Tier 2 tests (114 tests, needs loaded save). Tests Entity, Stats, Level, Audio, Net, IMGUI, StaticData, Osi dispatch, EntityEvents, Parity, Wave3, Wave7 |
 | `!identity` | JSON identity/readiness handshake: pid, version, game_state, session_init, stats_ready, dylib image. Verify before trusting live test results |
 
-### Test Suite (737 tests)
+### Test Suite (738 tests)
 
-Four tiers, 737 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
+Four tiers, 738 total tests. Offline tiers (0 + H) run in CI. In-game tiers (1 + 2) are Lua C string constants registered via `BG3SE_AddTest(tier, name, fn)`.
 
 | Tier | Command | Tests | Requires |
 |------|---------|-------|----------|
-| 0 | `./build/bin/bg3se_test_tier0` | 141 | None (CI-safe) |
+| 0 | `./build/bin/bg3se_test_tier0` | 142 | None (CI-safe) |
 | H | `PYTHONPATH=tools pytest tests/harness/ -v` | 368 | Python 3.12 (CI-safe) |
 | 1 | `!test` | 114 | Console only (no save needed) |
 | 2 | `!test_ingame` | 114 | Loaded save game |

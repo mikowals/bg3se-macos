@@ -91,13 +91,14 @@ TEST(cc_appearance_visual_matches_windows_declaration) {
     ASSERT_NOT_NULL(layout);
     ASSERT_STR_EQ(layout->engine_class, "eoc::CharacterCreationAppearanceVisualManager");
     ASSERT_EQ(layout->entry_size, 0xA8);
-    ASSERT_EQ(layout->field_count, 13);
+    ASSERT_EQ(layout->field_count, 14);
 
     struct { const char *name; StaticDataFieldKind kind; uint16_t offset; } expected[] = {
         { "RootTemplate",       SD_FIELD_GUID,             0x18 },
         { "RaceUUID",           SD_FIELD_GUID,             0x28 },
         { "BodyType",           SD_FIELD_U8,               0x38 },
         { "BodyShape",          SD_FIELD_U8,               0x39 },
+        { "field_3C",           SD_FIELD_U32,              0x3C },
         { "SlotName",           SD_FIELD_FIXEDSTRING,      0x40 },
         { "VisualResource",     SD_FIELD_GUID,             0x48 },
         { "HeadAppearanceUUID", SD_FIELD_GUID,             0x58 },

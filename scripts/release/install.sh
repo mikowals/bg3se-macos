@@ -60,7 +60,7 @@ MACOS_DIR="$APP/Contents/MacOS"
 EXE="$MACOS_DIR/Baldur's Gate 3"
 BACKUP="$EXE$BACKUP_SUFFIX"
 
-if pgrep -x "Baldur's Gate 3" >/dev/null 2>&1; then
+if pgrep -f "Baldur's Gate 3" >/dev/null 2>&1; then  # -f, as the harness's is_running() does
     echo "Baldur's Gate 3 is running. Quit it first." >&2
     exit 1
 fi
@@ -95,13 +95,25 @@ if is_patched; then
     echo "Game binary already links libbg3se; patch step skipped."
 else
     [[ -f "$BACKUP" ]] || cp -p "$EXE" "$BACKUP"
-    if ! "$INSERT_DYLIB" --weak --inplace --all-yes "$INSTALL_NAME" "$EXE" >/dev/null 2>&1; then
-        "$INSERT_DYLIB" --weak --inplace --strip-codesig --all-yes "$INSTALL_NAME" "$EXE"
+    # Patch a copy and swap it in only once it verifies, so a failed insert_dylib
+    # or codesign never leaves the live game binary half-written.
+    WORK="$EXE.bg3se-patching"
+    trap 'rm -f "$WORK"' EXIT
+    cp -p "$EXE" "$WORK"
+    if ! "$INSERT_DYLIB" --weak --inplace --all-yes "$INSTALL_NAME" "$WORK" >/dev/null 2>&1; then
+        "$INSERT_DYLIB" --weak --inplace --strip-codesig --all-yes "$INSTALL_NAME" "$WORK" || {
+            echo "insert_dylib failed; the game binary is untouched (backup: $BACKUP)" >&2; exit 1; }
     fi
-    codesign --deep -f -s - "$EXE" >/dev/null 2>&1 || {
-        echo "codesign failed; the game may refuse to launch. Restore with: $0 --uninstall" >&2
-        exit 1
-    }
+    for arch in $(lipo -archs "$WORK"); do
+        otool -arch "$arch" -L "$WORK" | grep -q "$INSTALL_NAME" || {
+            echo "Patch verification failed: $arch slice does not link $INSTALL_NAME; game binary untouched" >&2
+            exit 1
+        }
+    done
+    { codesign --deep -f -s - "$WORK" && codesign --verify "$WORK"; } >/dev/null 2>&1 || {
+        echo "codesign failed; the game binary is untouched (backup: $BACKUP)" >&2; exit 1; }
+    mv -f "$WORK" "$EXE"
+    trap - EXIT
     is_patched || { echo "Patch verification failed (otool does not list libbg3se)" >&2; exit 1; }
     echo "Patched game binary (backup: $BACKUP)"
 fi

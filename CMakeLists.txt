@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(bg3se-macos VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
-
 # ============================================
 # SDK Detection (fixes 'tuple' not found on CommandLineTools-only systems)
+# Must precede project(): once the languages are enabled CMAKE_OSX_SYSROOT is
+# a cache entry and a later non-FORCE set() would be ignored.
 # ============================================
 if(NOT CMAKE_OSX_SYSROOT)
     execute_process(
@@ -13,7 +13,7 @@ if(NOT CMAKE_OSX_SYSROOT)
         RESULT_VARIABLE _xcrun_rc
     )
     if(_xcrun_rc EQUAL 0 AND _detected_sdk)
-        set(CMAKE_OSX_SYSROOT "${_detected_sdk}" CACHE PATH "macOS SDK path (auto-detected)")
+        set(CMAKE_OSX_SYSROOT "${_detected_sdk}" CACHE PATH "macOS SDK path (auto-detected)" FORCE)
         message(STATUS "Auto-detected macOS SDK: ${_detected_sdk}")
     else()
         # Fallback: probe the standard CommandLineTools path
@@ -21,7 +21,7 @@ if(NOT CMAKE_OSX_SYSROOT)
         if(_clt_sdks)
             list(SORT _clt_sdks)
             list(GET _clt_sdks -1 _clt_latest)
-            set(CMAKE_OSX_SYSROOT "${_clt_latest}" CACHE PATH "macOS SDK path (CommandLineTools fallback)")
+            set(CMAKE_OSX_SYSROOT "${_clt_latest}" CACHE PATH "macOS SDK path (CommandLineTools fallback)" FORCE)
             message(STATUS "Using CommandLineTools SDK: ${_clt_latest}")
         else()
             message(WARNING
@@ -32,6 +32,8 @@ if(NOT CMAKE_OSX_SYSROOT)
         endif()
     endif()
 endif()
+
+project(bg3se-macos VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
 
 # Set C/C++/Objective-C++ standards
 # Using C23 for __VA_OPT__ support in variadic macros (logging.h)
@@ -54,6 +56,8 @@ set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 option(BG3SE_SKIP_TOOLCHAIN_PROBE "Skip the configure-time Objective-C++ toolchain probe" OFF)
 if(NOT BG3SE_SKIP_TOOLCHAIN_PROBE)
     include(CheckSourceCompiles)
+    # Re-run on every configure: a cached pass must not outlive an Xcode change.
+    unset(BG3SE_OBJCXX_TOOLCHAIN_OK CACHE)
     check_source_compiles(OBJCXX "
 #include <tuple>
 #import <MetalKit/MetalKit.h>

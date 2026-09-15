@@ -8,7 +8,8 @@
 > `0x10cd9fac0` ↔ `0x108927ac0`). Reading `+0x7C`/`+0x80` from it returns
 > neighbouring globals, which is why the "HASHMAP" status lines showed
 > `Feat count=0`, `Class count=24576, ptr_array=0x75`, and why `GetAll()` was
-> empty or garbage for six of nine types. The bank is resolved from the
+> empty or garbage for eight of nine types (only `ActionResource`, captured by
+> its Get<T> hook, held real entries). The bank is resolved from the
 > type index through the headmaster's `HashMap<StaticDataTypeIndex,
 > GuidResourceBankBase*>` (`lookup_manager_by_type_index`), for every type,
 > at post-init and lazily on access.
@@ -19,7 +20,12 @@
 > +0x50, so `Keys.size` is at **+0x7C** and `Values.buf` at **+0x80**, a flat
 > `T[]` with stride `sizeof(T)`. Every entry starts with the resource vtable
 > pointer, so the stride is measurable at runtime as the distance to its next
-> repeat (`detect_entry_stride`). Live strides on 7398727:
+> repeat (`detect_entry_stride`). A candidate must also repeat at entry 2
+> when the bank holds three or more entries, so a field inside entry 0 that
+> happens to hold the vtable word is not taken for the stride, and nothing
+> below 0x18 (vtable + ResourceUUID) is accepted. Cached banks are
+> re-resolved through the table at every SessionLoaded and replaced if they
+> moved. Live strides on 7398727:
 >
 > | Type | Count | Stride | Previous constant |
 > |------|-------|--------|-------------------|
@@ -188,7 +194,12 @@ the recommended workflow uses Frida to capture the pointer at runtime:
    end
    ```
 
-### API Functions
+### API Functions (historical, Dec 2025)
+
+> The Frida-capture workflow below predates the headmaster resolution described
+> at the top of this file and is kept for the record only. `GetAll`/`Get` no
+> longer need a capture; `Ext.StaticData.ProbeRaw(type)` reports the live bank.
+
 
 | Function | Description |
 |----------|-------------|

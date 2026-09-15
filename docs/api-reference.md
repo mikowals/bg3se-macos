@@ -1001,6 +1001,7 @@ their Windows property surface. `CharacterCreationAppearanceVisual` entries carr
 |----------|------|-------------|
 | `RootTemplate`, `RaceUUID`, `VisualResource`, `HeadAppearanceUUID`, `DefaultSkinColor` | string | GUIDs |
 | `BodyType`, `BodyShape`, `DefaultForBodyType` | integer | uint8 selectors |
+| `field_3C` | integer | uint32 at +0x3C, unnamed in the Windows declaration; exposed for parity |
 | `SlotName`, `IconIdOverride`, `TextureEntryPart` | string | FixedStrings (empty when unset) |
 | `DisplayName` | table | `{ Handle = { Handle = "h…", Version = n }, ArgumentString = { Handle, Version } }`; pass `DisplayName.Handle.Handle` to `Ext.Loca.GetTranslatedString` |
 | `Tags` | table | Array of GUID strings |

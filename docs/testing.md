@@ -51,8 +51,8 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 737 (509 offline + 228 Lua) |
-| **Tier 0 (C unit)** | 141 — native binary, no game, CI-safe |
+| **Total tests** | 738 (510 offline + 228 Lua) |
+| **Tier 0 (C unit)** | 142 — native binary, no game, CI-safe |
 | **Tier H (pytest)** | 368 — Python harness, no game, CI-safe |
 | **Tier 1 (General)** | 114 — Lua, run anytime, no save needed |
 | **Tier 2 (In-Game)** | 114 — Lua, require loaded save |
@@ -60,7 +60,7 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 ### Tier 0: Native C Unit Tests
 
-141 tests in `tests/tier0/`. Built as standalone binary `bg3se_test_tier0` via CMake.
+142 tests in `tests/tier0/`. Built as standalone binary `bg3se_test_tier0` via CMake.
 Tests memory-safety-critical C code without any game process.
 
 ```bash

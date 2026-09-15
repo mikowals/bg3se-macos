@@ -43,6 +43,15 @@
 // The key difference: TypeContext Values.buf_ is an array of POINTERS,
 // while Session FeatManager has a flat array of structs.
 //
+// Sanity ceilings for values read from game memory. A bank or Array<Guid>
+// whose header exceeds these is treated as unreadable rather than iterated:
+// Progression is the largest bank on 7398727 at 1004 entries, and no
+// GuidResource carries more than a handful of tag GUIDs.
+#define STATICDATA_MAX_BANK_ENTRIES      65536
+#define STATICDATA_MAX_GUID_ARRAY        4096
+#define STATICDATA_MAX_HASH_SLOTS        (1 << 20)
+#define STATICDATA_MIN_ENTRY_STRIDE      0x18   // vtable + ResourceUUID is the smallest GuidResource
+
 #define FEATMANAGER_REAL_COUNT_OFFSET    0x7C   // GuidResourceBank<T>::Resources.Keys.size
 #define FEATMANAGER_REAL_ARRAY_OFFSET    0x80   // GuidResourceBank<T>::Resources.Values.buf (flat T[])
 
@@ -67,7 +76,7 @@
 
 // Origin structure
 // Has uint8_t AvailableInCharacterCreation at +0x18 before Name
-#define ORIGIN_SIZE                   0x180  // Estimate (re-measured at runtime)
+#define ORIGIN_SIZE                   0x190  // 400 bytes (live on 7398727; re-measured at runtime)
 #define ORIGIN_OFFSET_NAME            0x1C   // FixedString Name (aligned after uint8_t)
 
 // Background structure - NO Name field, only DisplayName (TranslatedString)
@@ -109,7 +118,7 @@ static const ManagerConfig g_manager_configs[STATICDATA_COUNT] = {
     // STATICDATA_CLASS
     { 0x7C, 0x80, CLASS_SIZE, CLASS_OFFSET_NAME, "/tmp/bg3se_classmanager.txt" },
     // STATICDATA_PROGRESSION (estimate, re-measured at runtime)
-    { 0x7C, 0x80, 0x200, 0x18, "/tmp/bg3se_progressionmanager.txt" },
+    { 0x7C, 0x80, 0x148, 0x18, "/tmp/bg3se_progressionmanager.txt" },  // 0x148 live on 7398727
     // STATICDATA_ACTIONRESOURCE (0x60 live; was a 0x80 estimate)
     { 0x7C, 0x80, 0x60, 0x18, "/tmp/bg3se_actionresourcemanager.txt" },
     // STATICDATA_FEATDESCRIPTION (0x60 live; was a 0x80 estimate)
@@ -285,49 +294,6 @@ static int capture_managers_via_typecontext(void) {
     return captured;
 }
 
-/**
- * Legacy function for debugging - traverses and logs all TypeInfo entries.
- */
-static void* find_manager_via_typecontext(const char* type_name) {
-    if (!g_staticdata.main_binary_base || !type_name) {
-        return NULL;
-    }
-
-    // Get pointer to m_State (address from per-version offset table)
-    const VersionOffsets *off = offset_table_get();
-    if (!off || !off->staticdata_mstate_ptr) {
-        return NULL;
-    }
-    void** ptr_mstate = (void**)offset_table_resolve(off->staticdata_mstate_ptr);
-    void* m_state = ptr_mstate ? *ptr_mstate : NULL;
-    if (!m_state) {
-        log_message("[StaticData] m_State is NULL");
-        return NULL;
-    }
-
-    log_message("[StaticData] m_State at %p", m_state);
-
-    // TypeInfo head is at m_State + 8
-    TypeInfo* typeinfo = *(TypeInfo**)((uint8_t*)m_state + 8);
-
-    int count = 0;
-    while (typeinfo && count < 200) {  // Safety limit
-        // Check if this TypeInfo has a valid manager
-        if (typeinfo->manager_ptr && typeinfo->type_name) {
-            // type_name is a raw C string (verified at runtime)
-            const char* name = (const char*)typeinfo->type_name;
-            log_message("[StaticData] TypeInfo[%d]: mgr=%p, name=%s",
-                        count, typeinfo->manager_ptr, name);
-        }
-
-        typeinfo = typeinfo->next;
-        count++;
-    }
-
-    log_message("[StaticData] Traversed %d TypeInfo entries", count);
-    return NULL;
-}
-
 // ============================================================================
 // Hook Functions
 // ============================================================================
@@ -347,16 +313,21 @@ static void hook_FeatGetFeats(void* out, void* feat_manager) {
         g_staticdata.real_managers[STATICDATA_FEAT] = feat_manager;
         log_message("[StaticData] *** HOOK FIRED *** Captured REAL FeatManager: %p", feat_manager);
 
-        // Log structure info using GetFeats-verified offsets (0x7C, 0x80)
-        int32_t count = *(int32_t*)((uint8_t*)feat_manager + FEATMANAGER_REAL_COUNT_OFFSET);
-        void* array = *(void**)((uint8_t*)feat_manager + FEATMANAGER_REAL_ARRAY_OFFSET);
-        log_message("[StaticData] FeatManager structure: count@+0x7C=%d, array@+0x80=%p", count, array);
+        // Log structure info using GetFeats-verified offsets (0x7C, 0x80).
+        // The manager is live here (we run inside the engine's accessor), but
+        // every game read still goes through safe_memory_* by convention.
+        int32_t count = 0;
+        void* array = NULL;
+        if (safe_memory_read_i32((mach_vm_address_t)feat_manager + FEATMANAGER_REAL_COUNT_OFFSET, &count) &&
+            safe_memory_read_pointer((mach_vm_address_t)feat_manager + FEATMANAGER_REAL_ARRAY_OFFSET, &array)) {
+            log_message("[StaticData] FeatManager structure: count@+0x7C=%d, array@+0x80=%p", count, array);
+        }
 
         // Verify by reading first feat entry
-        if (array && count > 0) {
-            uint8_t* first_feat = (uint8_t*)array;
+        uint8_t first_feat[16];
+        if (array && count > 0 && safe_memory_read((mach_vm_address_t)array, first_feat, sizeof(first_feat))) {
             log_message("[StaticData] First feat at %p, first 16 bytes: %02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X",
-                first_feat,
+                array,
                 first_feat[0], first_feat[1], first_feat[2], first_feat[3],
                 first_feat[4], first_feat[5], first_feat[6], first_feat[7],
                 first_feat[8], first_feat[9], first_feat[10], first_feat[11],
@@ -383,15 +354,18 @@ static void hook_GetAllFeats(void* environment) {
 
     // Try to capture the real FeatManager from environment + 0x130
     if (environment && !g_staticdata.real_managers[STATICDATA_FEAT]) {
-        void* feat_manager = *(void**)((uint8_t*)environment + 0x130);
-        if (feat_manager) {
+        void* feat_manager = NULL;
+        if (safe_memory_read_pointer((mach_vm_address_t)environment + 0x130, &feat_manager) && feat_manager) {
             g_staticdata.real_managers[STATICDATA_FEAT] = feat_manager;
             log_message("[StaticData] Captured FeatManager from env+0x130: %p", feat_manager);
 
             // Log structure info
-            int32_t count = *(int32_t*)((uint8_t*)feat_manager + FEATMANAGER_REAL_COUNT_OFFSET);
-            void* array = *(void**)((uint8_t*)feat_manager + FEATMANAGER_REAL_ARRAY_OFFSET);
-            log_message("[StaticData] FeatManager: count=%d, array=%p", count, array);
+            int32_t count = 0;
+            void* array = NULL;
+            if (safe_memory_read_i32((mach_vm_address_t)feat_manager + FEATMANAGER_REAL_COUNT_OFFSET, &count) &&
+                safe_memory_read_pointer((mach_vm_address_t)feat_manager + FEATMANAGER_REAL_ARRAY_OFFSET, &array)) {
+                log_message("[StaticData] FeatManager: count=%d, array=%p", count, array);
+            }
         }
     }
 
@@ -717,8 +691,11 @@ static void* lookup_manager_by_type_index(int32_t type_index) {
         return NULL;
     }
 
-    if (!buckets || bucket_count <= 0 || !keys || !values) {
-        log_message("[StaticData] Hash lookup: invalid headmaster structure");
+    if (!buckets || !keys || !values ||
+        bucket_count <= 0 || bucket_count > STATICDATA_MAX_HASH_SLOTS ||
+        size < 0 || size > STATICDATA_MAX_HASH_SLOTS) {
+        log_message("[StaticData] Hash lookup: invalid headmaster structure (buckets=%d, size=%d)",
+                    bucket_count, size);
         return NULL;
     }
 
@@ -728,22 +705,29 @@ static void* lookup_manager_by_type_index(int32_t type_index) {
 
     // Read initial index from bucket
     uint32_t idx = 0;
-    if (!safe_memory_read_u32((mach_vm_address_t)buckets + bucket_idx * 4, &idx)) {
+    if (!safe_memory_read_u32((mach_vm_address_t)buckets + (mach_vm_address_t)bucket_idx * 4, &idx)) {
         return NULL;
     }
 
-    // Walk the chain
-    while ((int32_t)idx >= 0) {
+    // Walk the chain. Every index must address the Keys/Values arrays
+    // (idx < size), and a chain can never be longer than the table, so a
+    // stale or cyclic NextIds entry terminates instead of spinning.
+    for (int32_t hops = 0; (int32_t)idx >= 0 && hops <= size; hops++) {
+        if (idx >= (uint32_t)size) {
+            log_message("[StaticData] Hash lookup: chain index %u exceeds table size %d", idx, size);
+            break;
+        }
+
         // Read key at this index
         int32_t key = 0;
-        if (!safe_memory_read_i32((mach_vm_address_t)keys + idx * 4, &key)) {
+        if (!safe_memory_read_i32((mach_vm_address_t)keys + (mach_vm_address_t)idx * 4, &key)) {
             break;
         }
 
         if (key == type_index) {
             // Found it - read value
             void* manager = NULL;
-            if (safe_memory_read_pointer((mach_vm_address_t)values + idx * 8, &manager)) {
+            if (safe_memory_read_pointer((mach_vm_address_t)values + (mach_vm_address_t)idx * 8, &manager)) {
                 return manager;
             }
             break;
@@ -751,7 +735,7 @@ static void* lookup_manager_by_type_index(int32_t type_index) {
 
         // Follow next chain
         if (!next_chain) break;
-        if (!safe_memory_read_u32((mach_vm_address_t)next_chain + idx * 4, &idx)) {
+        if (!safe_memory_read_u32((mach_vm_address_t)next_chain + (mach_vm_address_t)idx * 4, &idx)) {
             break;
         }
     }
@@ -793,6 +777,45 @@ static bool capture_bank_via_hash_lookup(StaticDataType type) {
     log_message("[StaticData] Hash lookup captured %s: %p (type_index=%d, count=%d, stride=0x%x)",
                 s_type_names[type], bank, type_index, count, effective_entry_size(type, bank));
     return true;
+}
+
+/**
+ * Re-resolve every cached bank through the headmaster table and replace any
+ * whose address moved. Banks live in the headmaster for the process lifetime
+ * on every build probed so far, but a session reload onto a different mod
+ * list is exactly the case where the engine could rebuild one; a cached
+ * pointer into freed-but-mapped memory would read plausible garbage rather
+ * than fail. Runs at every SessionLoaded from staticdata_post_init_capture.
+ *
+ * @return Number of banks whose address changed
+ */
+static int revalidate_cached_banks(void) {
+    if (!g_immutable_data_headmaster) return 0;
+
+    int moved = 0;
+    for (int i = 0; i < STATICDATA_COUNT; i++) {
+        StaticDataType type = (StaticDataType)i;
+        void* cached = g_staticdata.real_managers[type];
+        void* slot_ptr = g_staticdata.managers[type];
+        if (!cached || !slot_ptr) continue;
+
+        int32_t type_index = 0;
+        if (!safe_memory_read_i32((mach_vm_address_t)slot_ptr, &type_index)) continue;
+        void* current = lookup_manager_by_type_index(type_index);
+        if (!current) {
+            log_message("[StaticData] Revalidate: %s no longer in the headmaster table; keeping %p",
+                        s_type_names[type], cached);
+            continue;
+        }
+        if (current != cached) {
+            log_message("[StaticData] Revalidate: %s bank moved %p -> %p; stride will be re-measured",
+                        s_type_names[type], cached, current);
+            g_staticdata.real_managers[type] = current;
+            g_staticdata.entry_stride[type] = 0;
+            moved++;
+        }
+    }
+    return moved;
 }
 
 /**
@@ -1050,6 +1073,13 @@ int staticdata_post_init_capture(void) {
     int tc_captured = capture_managers_via_typecontext();
     log_message("[StaticData] TypeContext resolved %d slots", tc_captured);
 
+    // 1b. Banks cached by an earlier session: confirm they still resolve to
+    //     the same address, replace any that moved
+    int moved = revalidate_cached_banks();
+    if (moved > 0) {
+        log_message("[StaticData] Revalidate: %d cached banks replaced", moved);
+    }
+
     // 2. Resolve the banks behind those slots through the headmaster hash table
     int hl_captured = staticdata_hash_lookup_capture();
     log_message("[StaticData] Hash lookup resolved %d banks", hl_captured);
@@ -1095,7 +1125,12 @@ static bool read_bank_array(void* bank, int32_t* out_count, void** out_array) {
         !safe_memory_read_pointer((mach_vm_address_t)bank + FEATMANAGER_REAL_ARRAY_OFFSET, out_array)) {
         return false;
     }
-    return *out_array != NULL && *out_count >= 0;
+    if (*out_count < 0 || *out_count > STATICDATA_MAX_BANK_ENTRIES) {
+        return false;  // garbage header, not a bank
+    }
+    // An initialized but empty bank has no Values buffer yet; that is a valid
+    // count of 0, distinct from "bank unavailable".
+    return *out_count == 0 || *out_array != NULL;
 }
 
 /**
@@ -1114,10 +1149,22 @@ static int detect_entry_stride(void* bank) {
     uint64_t vmt = 0;
     if (!safe_memory_read_u64((mach_vm_address_t)array, &vmt) || vmt == 0) return 0;
 
-    for (int off = 8; off <= 0x1000; off += 8) {
+    // A field inside entry 0 could coincidentally hold the vtable word, so a
+    // candidate must also land on entry 2 when the bank has one: the true
+    // stride S repeats at 2S, while a false hit at k < S reads a field of
+    // entry 1 at 2k, which is not the vtable. Nothing smaller than a bare
+    // GuidResource (vtable + ResourceUUID) can be a stride.
+    for (int off = STATICDATA_MIN_ENTRY_STRIDE; off <= 0x1000; off += 8) {
         uint64_t word = 0;
         if (!safe_memory_read_u64((mach_vm_address_t)array + off, &word)) return 0;
-        if (word == vmt) return off;
+        if (word != vmt) continue;
+        if (count >= 3) {
+            uint64_t third = 0;
+            if (!safe_memory_read_u64((mach_vm_address_t)array + 2 * off, &third) || third != vmt) {
+                continue;
+            }
+        }
+        return off;
     }
     return 0;
 }
@@ -1396,6 +1443,28 @@ static bool read_guid_at(mach_vm_address_t addr, char* out_buf) {
     return true;
 }
 
+/**
+ * Read and validate an Array<Guid> header { Guid* buf; uint32_t capacity;
+ * uint32_t size; }. A header whose size exceeds its capacity, exceeds
+ * STATICDATA_MAX_GUID_ARRAY, or has entries but no buffer is garbage and is
+ * reported as unreadable so the caller skips the field instead of iterating it.
+ */
+static bool read_guid_array_header(mach_vm_address_t addr, void** out_buf, uint32_t* out_size) {
+    void* buf = NULL;
+    uint32_t capacity = 0, size = 0;
+    if (!safe_memory_read_pointer(addr, &buf) ||
+        !safe_memory_read_u32(addr + 0x08, &capacity) ||
+        !safe_memory_read_u32(addr + 0x0C, &size)) {
+        return false;
+    }
+    if (size > capacity || size > STATICDATA_MAX_GUID_ARRAY || (size > 0 && !buf)) {
+        return false;
+    }
+    *out_buf = buf;
+    *out_size = size;
+    return true;
+}
+
 bool staticdata_read_field(StaticDataPtr entry, const StaticDataField* field,
                            StaticDataFieldValue* out) {
     if (!entry || !field || !out) return false;
@@ -1430,9 +1499,10 @@ bool staticdata_read_field(StaticDataPtr entry, const StaticDataField* field,
             }
             return true;
         }
-        case SD_FIELD_GUID_ARRAY:
-            // Array<Guid> = { Guid* buf; uint32_t capacity; uint32_t size; }
-            return safe_memory_read_u32(addr + 0x0C, &out->guid_array.size);
+        case SD_FIELD_GUID_ARRAY: {
+            void* buf = NULL;
+            return read_guid_array_header(addr, &buf, &out->guid_array.size);
+        }
     }
     return false;
 }
@@ -1447,11 +1517,7 @@ bool staticdata_read_guid_array_at(StaticDataPtr entry, const StaticDataField* f
     mach_vm_address_t addr = (mach_vm_address_t)entry + field->offset;
     void* buf = NULL;
     uint32_t size = 0;
-    if (!safe_memory_read_pointer(addr, &buf) ||
-        !safe_memory_read_u32(addr + 0x0C, &size)) {
-        return false;
-    }
-    if (!buf || index >= size) {
+    if (!read_guid_array_header(addr, &buf, &size) || index >= size) {
         return false;
     }
     return read_guid_at((mach_vm_address_t)buf + (mach_vm_address_t)index * sizeof(Guid), out_buf);

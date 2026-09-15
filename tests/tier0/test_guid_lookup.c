@@ -107,9 +107,21 @@ TEST(parse_format_parse_preserves_all_16_bytes) {
     }
 }
 
+TEST(parse_rejects_non_hex_characters) {
+    Guid guid;
+
+    /* A bad low nibble used to fold into the high one: 'g' -> -1, 1*16 + -1 = 15. */
+    ASSERT_TRUE(!guid_parse("1g000000-0000-4000-8000-000000000000", &guid));
+    ASSERT_TRUE(!guid_parse("0g000000-0000-4000-8000-000000000000", &guid));
+    ASSERT_TRUE(!guid_parse("00000000-0000-4000-8000-00000000000g", &guid));
+    ASSERT_TRUE(!guid_parse("00000000-0000-4000-8g00-000000000000", &guid));
+    ASSERT_TRUE(guid_parse("1f000000-0000-4000-8000-000000000000", &guid));
+}
+
 void register_guid_lookup_tests(void) {
     printf("[guid_lookup]\n");
     RUN_TEST(format_parse_table_canonicalizes);
     RUN_TEST(live_host_pre_fix_output_regression);
     RUN_TEST(parse_format_parse_preserves_all_16_bytes);
+    RUN_TEST(parse_rejects_non_hex_characters);
 }

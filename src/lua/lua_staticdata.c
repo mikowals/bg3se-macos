@@ -77,11 +77,15 @@ static void push_layout_field(lua_State *L, StaticDataPtr entry, const StaticDat
             lua_setfield(L, -2, "ArgumentString");
             break;
         case SD_FIELD_GUID_ARRAY: {
+            // staticdata_read_field already bounded size (<= capacity, <= 4096).
+            // The whole array is read or the field is skipped: a truncated
+            // table would look like a valid shorter tag list.
             lua_createtable(L, (int)value.guid_array.size, 0);
             char guid_str[40];
             for (uint32_t i = 0; i < value.guid_array.size; i++) {
                 if (!staticdata_read_guid_array_at(entry, field, i, guid_str, sizeof(guid_str))) {
-                    break;
+                    lua_pop(L, 1);
+                    return;
                 }
                 lua_pushstring(L, guid_str);
                 lua_rawseti(L, -2, (lua_Integer)i + 1);
