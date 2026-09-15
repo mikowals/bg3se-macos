@@ -99,6 +99,82 @@ TEST(find_buffer_too_small) {
     free_pattern(p);
 }
 
+
+/* ── AUDIT ADDITIONS ─────────────────────────────────────────────── */
+
+/* GAP: nothing exercised parse_pattern's rejection paths. Deleting both
+ * `return NULL` validation arms (invalid hex + invalid character) left the
+ * whole suite green, so a garbage pattern string would have silently produced
+ * a pattern that scans for whatever sscanf happened to leave behind. */
+TEST(parse_rejects_non_hex) {
+    ASSERT_NULL(parse_pattern("ZZ"));
+    ASSERT_NULL(parse_pattern("48 ZZ"));
+    ASSERT_NULL(parse_pattern("48 8G"));
+    ASSERT_NULL(parse_pattern("**"));
+    ASSERT_NULL(parse_pattern("48-8D"));
+}
+
+TEST(parse_rejects_odd_nibble) {
+    ASSERT_NULL(parse_pattern("4"));
+    ASSERT_NULL(parse_pattern("48 8"));
+    ASSERT_NULL(parse_pattern("48 8D 0"));
+}
+
+TEST(parse_rejects_lone_question_mark) {
+    ASSERT_NULL(parse_pattern("?"));
+    ASSERT_NULL(parse_pattern("48 ? 05"));
+}
+
+TEST(parse_whitespace_only_is_null) {
+    ASSERT_NULL(parse_pattern("   "));
+    ASSERT_NULL(parse_pattern("\t"));
+}
+
+/* Wildcard bytes must be zeroed as well as masked — a caller that hexdumps
+ * pat->bytes would otherwise print uninitialised malloc contents. */
+TEST(parse_wildcard_zeroes_byte) {
+    BytePattern *p = parse_pattern("?? ?? ??");
+    ASSERT_NOT_NULL(p);
+    ASSERT_EQ(p->length, 3u);
+    for (size_t i = 0; i < 3; i++) {
+        ASSERT_EQ(p->mask[i], 0x00);
+        ASSERT_EQ(p->bytes[i], 0x00);
+    }
+    free_pattern(p);
+}
+
+TEST(parse_lowercase_hex_matches_uppercase) {
+    BytePattern *lo = parse_pattern("de ad be ef");
+    BytePattern *hi = parse_pattern("DE AD BE EF");
+    ASSERT_NOT_NULL(lo);
+    ASSERT_NOT_NULL(hi);
+    ASSERT_EQ(lo->length, hi->length);
+    ASSERT_EQ(memcmp(lo->bytes, hi->bytes, lo->length), 0);
+    free_pattern(lo);
+    free_pattern(hi);
+}
+
+TEST(find_null_inputs_are_null) {
+    unsigned char buf[] = { 0xAA, 0xBB };
+    BytePattern *p = parse_pattern("AA BB");
+    ASSERT_NOT_NULL(p);
+    ASSERT_NULL(find_pattern(NULL, sizeof(buf), p));
+    ASSERT_NULL(find_pattern(buf, sizeof(buf), NULL));
+    ASSERT_NULL(find_pattern(buf, 0, p));
+    free_pattern(p);
+}
+
+/* find_pattern must return the FIRST match, and must not run off the end of
+ * the buffer looking for a later one. */
+TEST(find_returns_first_match_only) {
+    unsigned char buf[] = { 0xCA, 0xFE, 0x00, 0xCA, 0xFE };
+    BytePattern *p = parse_pattern("CA FE");
+    ASSERT_NOT_NULL(p);
+    ASSERT_EQ(find_pattern(buf, sizeof(buf), p), (void *)&buf[0]);
+    ASSERT_EQ(find_pattern(buf + 1, sizeof(buf) - 1, p), (void *)&buf[3]);
+    free_pattern(p);
+}
+
 /* ── Registration ────────────────────────────────────────────────── */
 
 void register_pattern_scan_tests(void) {
@@ -113,4 +189,12 @@ void register_pattern_scan_tests(void) {
     RUN_TEST(find_no_match);
     RUN_TEST(find_at_end);
     RUN_TEST(find_buffer_too_small);
+    RUN_TEST(parse_rejects_non_hex);
+    RUN_TEST(parse_rejects_odd_nibble);
+    RUN_TEST(parse_rejects_lone_question_mark);
+    RUN_TEST(parse_whitespace_only_is_null);
+    RUN_TEST(parse_wildcard_zeroes_byte);
+    RUN_TEST(parse_lowercase_hex_matches_uppercase);
+    RUN_TEST(find_null_inputs_are_null);
+    RUN_TEST(find_returns_first_match_only);
 }

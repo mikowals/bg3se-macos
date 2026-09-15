@@ -44,6 +44,53 @@ TEST(sub_id_max_index) {
     ASSERT_EQ(SUB_ID_TYPE(id), 1u);
 }
 
+
+/* ── AUDIT ADDITIONS ─────────────────────────────────────────────── */
+
+/* sub_id_type_extraction above feeds SUB_TYPE_COMPONENT into MAKE_SUB_ID and
+ * then compares against SUB_TYPE_COMPONENT — it holds for ANY value of the
+ * constant. Redefining SUB_TYPE_COMPONENT from 2 to 99 kept all 68 tests
+ * green, even though entity_events.c stores that tag in every subscription id
+ * it hands to Lua and ecs_system_update.c routes on it. Pin the wire values
+ * and their distinctness. */
+TEST(sub_type_tags_pinned_and_distinct) {
+    ASSERT_EQ((uint32_t)SUB_TYPE_REPLICATION, 1u);
+    ASSERT_EQ((uint32_t)SUB_TYPE_COMPONENT,   2u);
+    ASSERT_EQ((uint32_t)SUB_TYPE_SYSTEM,      3u);
+
+    /* No tag may collide with the invalid sentinel, and a tagged id is never
+     * zero regardless of index — entity_events_unsubscribe() rejects 0 first. */
+    ASSERT_NE(MAKE_SUB_ID(SUB_TYPE_REPLICATION, 0), ENTITY_SUB_INVALID);
+    ASSERT_NE(MAKE_SUB_ID(SUB_TYPE_COMPONENT, 0),   ENTITY_SUB_INVALID);
+    ASSERT_NE(MAKE_SUB_ID(SUB_TYPE_SYSTEM, 0),      ENTITY_SUB_INVALID);
+
+    ASSERT_NE(MAKE_SUB_ID(SUB_TYPE_REPLICATION, 7),
+              MAKE_SUB_ID(SUB_TYPE_COMPONENT, 7));
+    ASSERT_NE(MAKE_SUB_ID(SUB_TYPE_COMPONENT, 7),
+              MAKE_SUB_ID(SUB_TYPE_SYSTEM, 7));
+}
+
+/* The id must carry the full 32-bit salt<<16|index that entity_events.c's
+ * pool_pack() produces, with no cross-talk into the type tag. */
+TEST(sub_id_carries_full_salt_and_index) {
+    const uint32_t packed = (0xBEEFu << 16) | 0x00FFu;   /* salt 0xBEEF, idx 255 */
+    EntitySubscriptionId id = MAKE_SUB_ID(SUB_TYPE_COMPONENT, packed);
+
+    ASSERT_EQ(SUB_ID_INDEX(id), packed);
+    ASSERT_EQ(SUB_ID_TYPE(id), 2u);
+    ASSERT_EQ((SUB_ID_INDEX(id) >> 16) & 0xFFFFu, 0xBEEFu);
+    ASSERT_EQ(SUB_ID_INDEX(id) & 0xFFFFu, 0x00FFu);
+}
+
+/* A high index must not bleed into the type field (the cast in MAKE_SUB_ID is
+ * what prevents sign-extension from an int index). */
+TEST(sub_id_high_index_does_not_bleed_into_type) {
+    EntitySubscriptionId id = MAKE_SUB_ID(SUB_TYPE_SYSTEM, (int)0xFFFFFFFF);
+    ASSERT_EQ(SUB_ID_TYPE(id), 3u);
+    ASSERT_EQ(SUB_ID_INDEX(id), 0xFFFFFFFFu);
+    ASSERT_EQ(id, ((uint64_t)3 << 32) | 0xFFFFFFFFull);
+}
+
 /* ── Registration ────────────────────────────────────────────────── */
 
 void register_entity_events_tests(void) {
@@ -54,4 +101,7 @@ void register_entity_events_tests(void) {
     RUN_TEST(sub_id_invalid_is_zero);
     RUN_TEST(sub_id_all_types);
     RUN_TEST(sub_id_max_index);
+    RUN_TEST(sub_type_tags_pinned_and_distinct);
+    RUN_TEST(sub_id_carries_full_salt_and_index);
+    RUN_TEST(sub_id_high_index_does_not_bleed_into_type);
 }
