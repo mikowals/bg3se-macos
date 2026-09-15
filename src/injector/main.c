@@ -2525,6 +2525,15 @@ static int lua_global_dump(lua_State *L) {
     int t = lua_type(L, 1);
     const char *tname = lua_typename(L, t);
 
+    // Component/entity proxies are userdata with __pairs; dump them as JSON
+    // like tables so _D(entity.Health) shows fields, not a pointer.
+    if (t == LUA_TUSERDATA) {
+        if (luaL_getmetafield(L, 1, "__pairs") != LUA_TNIL) {
+            lua_pop(L, 1);
+            t = LUA_TTABLE;
+        }
+    }
+
     switch (t) {
         case LUA_TNIL:
             LOG_LUA_INFO("_D: nil");

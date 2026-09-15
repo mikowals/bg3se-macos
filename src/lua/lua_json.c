@@ -170,16 +170,26 @@ const char *json_parse_value(lua_State *L, const char *json) {
 // buffer appends corrupts it (SIGSEGV in luaL_prepbuffsize). Building into a
 // malloc'd buffer sidesteps that entirely; the result is copied into the caller's
 // luaL_Buffer in a single, safe append at the top level.
-typedef struct { char *data; size_t len; size_t cap; int oom; } JsonBuf;
 
 // Cap recursion so a cyclic/self-referential table (possible now that mod tables
 // carry an { __index = _G } metatable) fails gracefully instead of overflowing.
 #define JSON_MAX_DEPTH 200
 
+typedef struct {
+    char *data; size_t len; size_t cap; int oom;
+    // Containers (tables, __pairs userdata) on the active serialization path,
+    // indexed by depth. Reaching a container that is already on the path is a
+    // back-edge: it serializes as null instead of recursing, so a cycle costs
+    // one node rather than JSON_MAX_DEPTH levels (or, for a branching cycle
+    // such as t.a = t; t.b = t, an exponential expansion).
+    const void *active[JSON_MAX_DEPTH + 1];
+} JsonBuf;
+
 static void jb_init(JsonBuf *jb) {
     jb->cap = 256; jb->len = 0; jb->oom = 0;
     jb->data = (char *)malloc(jb->cap);
     if (!jb->data) jb->oom = 1; else jb->data[0] = '\0';
+    memset(jb->active, 0, sizeof(jb->active));
 }
 static void jb_free(JsonBuf *jb) { free(jb->data); jb->data = NULL; }
 static void jb_reserve(JsonBuf *jb, size_t extra) {
@@ -205,10 +215,37 @@ static void jb_addchar(JsonBuf *jb, char c) {
     jb->data[jb->len++] = c; jb->data[jb->len] = '\0';
 }
 
+// True when `self` is already being serialized at a shallower depth.
+static int jb_on_active_path(const JsonBuf *jb, const void *self, int depth) {
+    for (int d = 0; d < depth; d++) {
+        if (jb->active[d] == self) return 1;
+    }
+    return 0;
+}
+
 static void json_sb_value(lua_State *L, int index, JsonBuf *jb, int depth);
+
+// Emit an object key. Guards against lua_tostring returning NULL for
+// non-string, non-number keys, which would crash the buffer append.
+static void json_sb_key(lua_State *L, int index, JsonBuf *jb) {
+    index = lua_absindex(L, index);
+    jb_addchar(jb, '"');
+    if (lua_type(L, index) == LUA_TSTRING) {
+        jb_addstring(jb, lua_tostring(L, index));
+    } else {
+        lua_pushvalue(L, index);
+        const char *ks = lua_tostring(L, -1);
+        jb_addstring(jb, ks ? ks : "?");
+        lua_pop(L, 1);
+    }
+    jb_addchar(jb, '"');
+}
 
 static void json_sb_table(lua_State *L, int index, JsonBuf *jb, int depth) {
     if (depth > JSON_MAX_DEPTH) { jb_addstring(jb, "null"); return; }
+    const void *self = lua_topointer(L, index);
+    if (jb_on_active_path(jb, self, depth)) { jb_addstring(jb, "null"); return; }
+    jb->active[depth] = self;
 
     // Check if it's an array (sequential integer keys starting from 1)
     int is_array = 1;
@@ -239,27 +276,73 @@ static void json_sb_table(lua_State *L, int index, JsonBuf *jb, int depth) {
         while (lua_next(L, index) != 0) {
             if (!first) jb_addchar(jb, ',');
             first = 0;
-
-            // Key (guard against lua_tostring returning NULL for non-string,
-            // non-number keys, which would crash the buffer append).
-            jb_addchar(jb, '"');
-            if (lua_type(L, -2) == LUA_TSTRING) {
-                jb_addstring(jb, lua_tostring(L, -2));
-            } else {
-                lua_pushvalue(L, -2);
-                const char *ks = lua_tostring(L, -1);
-                jb_addstring(jb, ks ? ks : "?");
-                lua_pop(L, 1);
-            }
-            jb_addchar(jb, '"');
+            json_sb_key(L, -2, jb);
             jb_addchar(jb, ':');
-
-            // Value
             json_sb_value(L, lua_gettop(L), jb, depth + 1);
             lua_pop(L, 1);
         }
         jb_addchar(jb, '}');
     }
+}
+
+// Userdata that exposes __pairs (component proxies, entity proxies, any
+// object a mod can walk with pairs()) serializes as an object by iterating it
+// in place, through the same depth cap and cycle guard as tables. Opaque
+// userdata stays null. A __pairs or iterator that raises is fail-soft: the
+// error is logged, that node becomes null, and serialization of its siblings
+// continues, so a single bad proxy inside PersistentVars cannot abort a save.
+static void json_sb_userdata(lua_State *L, int index, JsonBuf *jb, int depth) {
+    if (depth > JSON_MAX_DEPTH) { jb_addstring(jb, "null"); return; }
+    if (luaL_getmetafield(L, index, "__pairs") == LUA_TNIL) {
+        jb_addstring(jb, "null");
+        return;
+    }
+    const void *self = lua_topointer(L, index);
+    if (jb_on_active_path(jb, self, depth)) {
+        lua_pop(L, 1);                          // __pairs
+        jb_addstring(jb, "null");
+        return;
+    }
+    jb->active[depth] = self;
+
+    int base = lua_gettop(L) - 1;               // slot below __pairs
+    lua_pushvalue(L, index);                    // [__pairs, ud]
+    if (lua_pcall(L, 1, 3, 0) != LUA_OK) {      // [iter, state, ctrl]
+        LOG_LUA_WARN("Json.Stringify: __pairs raised: %s", lua_tostring(L, -1));
+        lua_settop(L, base);
+        jb_addstring(jb, "null");
+        return;
+    }
+    int iter = base + 1, state = base + 2, ctrl = base + 3;
+
+    size_t mark = jb->len;                      // rewind point on iterator error
+    jb_addchar(jb, '{');
+    int first = 1;
+    for (;;) {
+        lua_pushvalue(L, iter);
+        lua_pushvalue(L, state);
+        lua_pushvalue(L, ctrl);
+        if (lua_pcall(L, 2, 2, 0) != LUA_OK) {  // [iter, state, ctrl, key, value]
+            LOG_LUA_WARN("Json.Stringify: __pairs iterator raised: %s", lua_tostring(L, -1));
+            lua_settop(L, base);
+            if (!jb->oom) { jb->len = mark; jb->data[mark] = '\0'; }
+            jb_addstring(jb, "null");
+            return;
+        }
+        if (lua_isnil(L, -2)) {
+            lua_pop(L, 2);
+            break;
+        }
+        if (!first) jb_addchar(jb, ',');
+        first = 0;
+        json_sb_key(L, -2, jb);
+        jb_addchar(jb, ':');
+        json_sb_value(L, lua_gettop(L), jb, depth + 1);
+        lua_pop(L, 1);                          // value
+        lua_replace(L, ctrl);                   // key becomes the control variable
+    }
+    jb_addchar(jb, '}');
+    lua_settop(L, base);
 }
 
 static void json_sb_value(lua_State *L, int index, JsonBuf *jb, int depth) {
@@ -287,6 +370,9 @@ static void json_sb_value(lua_State *L, int index, JsonBuf *jb, int depth) {
         case LUA_TTABLE:
             json_sb_table(L, index, jb, depth);
             break;
+        case LUA_TUSERDATA:
+            json_sb_userdata(L, index, jb, depth);
+            break;
         case LUA_TNIL:
         default:
             jb_addstring(jb, "null");
@@ -298,6 +384,7 @@ static void json_sb_value(lua_State *L, int index, JsonBuf *jb, int depth) {
 // main). Builds into a private malloc buffer, then appends the whole result to
 // the caller's luaL_Buffer in one safe operation.
 void json_stringify_value(lua_State *L, int index, luaL_Buffer *b) {
+    index = lua_absindex(L, index);
     JsonBuf jb;
     jb_init(&jb);
     json_sb_value(L, index, &jb, 0);
@@ -325,77 +412,10 @@ int lua_ext_json_parse(lua_State *L) {
     return 1;
 }
 
-#define JSON_MAX_MATERIALIZE_DEPTH 32
-static void json_materialize(lua_State *L, int idx, int depth) {
-    idx = lua_absindex(L, idx);
-    int t = lua_type(L, idx);
-
-    if (depth > JSON_MAX_MATERIALIZE_DEPTH) {
-        lua_pushnil(L);
-        return;
-    }
-
-    if (t == LUA_TUSERDATA) {
-        if (luaL_getmetafield(L, idx, "__pairs") == LUA_TNIL) {
-            // Opaque userdata - no iteration; serializes to null later.
-            lua_pushvalue(L, idx);
-            return;
-        }
-        int top0 = lua_gettop(L) - 1;   // exclude the __pairs we just pushed
-        lua_pushvalue(L, idx);          // [__pairs, ud]
-        lua_call(L, 1, 3);              // [iter, state, ctrl]
-        int iter = top0 + 1, state = top0 + 2, ctrl = top0 + 3;
-        lua_newtable(L);                // [iter, state, ctrl, out]
-        int out = top0 + 4;
-        for (;;) {
-            lua_pushvalue(L, iter);
-            lua_pushvalue(L, state);
-            lua_pushvalue(L, ctrl);
-            lua_call(L, 2, 2);          // [..., out, key, value]
-            if (lua_isnil(L, -2)) {
-                lua_pop(L, 2);
-                break;
-            }
-            lua_pushvalue(L, -2);       // advance ctrl = key
-            lua_replace(L, ctrl);
-            json_materialize(L, -1, depth + 1);  // [..., key, value, plain]
-            lua_pushvalue(L, -3);       // key copy
-            lua_pushvalue(L, -2);       // plain copy
-            lua_rawset(L, out);         // out[key] = plain
-            lua_pop(L, 3);              // pop plain, value, key
-        }
-        // Collapse [iter, state, ctrl, out] -> just out at top0+1.
-        lua_replace(L, top0 + 1);       // out -> iter slot
-        lua_settop(L, top0 + 1);        // drop state, ctrl
-        return;
-    }
-
-    if (t == LUA_TTABLE) {
-        lua_newtable(L);                // out
-        int out = lua_gettop(L);
-        lua_pushnil(L);
-        while (lua_next(L, idx) != 0) {  // [out, key, value]
-            json_materialize(L, -1, depth + 1);  // [out, key, value, plain]
-            lua_pushvalue(L, -3);       // key copy
-            lua_pushvalue(L, -2);       // plain copy
-            lua_rawset(L, out);         // out[key] = plain
-            lua_pop(L, 2);              // pop plain + value, keep key for lua_next
-        }
-        return;                          // out left on top
-    }
-
-    // Primitive (or anything else): copy as-is.
-    lua_pushvalue(L, idx);
-}
-
 int lua_ext_json_stringify(lua_State *L) {
-    // Expand any proxy userdata into plain tables FIRST, before the buffer opens.
-    json_materialize(L, 1, 0);
-    int plainIdx = lua_gettop(L);
-
     luaL_Buffer b;
     luaL_buffinit(L, &b);
-    json_stringify_value(L, plainIdx, &b);
+    json_stringify_value(L, 1, &b);
     luaL_pushresult(&b);
     return 1;
 }
