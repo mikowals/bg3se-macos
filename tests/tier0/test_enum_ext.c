@@ -205,6 +205,63 @@ TEST(enum_numeric_string_key_is_nil) {
 }
 
 // ---------------------------------------------------------------------------
+// Same ordering defect in the enum __eq and the bitfield operand reader
+// (src/enum/enum_lua.c, src/enum/bitfield_lua.c): lua_isstring() swallowed a
+// numeric operand, so a bitwise op against a plain integer mask looked up the
+// label "4" and failed, and __eq against an integer compared the label "7".
+// Lua only dispatches __eq when both operands are userdata, so the enum test
+// reaches the metamethod through the metatable, as a mod would via
+// getmetatable(v).__eq.
+// ---------------------------------------------------------------------------
+
+TEST(bitfield_bor_accepts_integer_operand) {
+    lua_State *L = make_state();
+    ASSERT_NOT_NULL(L);
+
+    long long v = -1;
+    ASSERT_TRUE(eval_int(L, "return (Ext.Enums.AttributeFlags[0x2] | 0x4).__Value", &v));
+    ASSERT_EQ(v, 6);
+
+    ASSERT_TRUE(eval_int(L, "return (Ext.Enums.AttributeFlags[0x6] & 0x4).__Value", &v));
+    ASSERT_EQ(v, 4);
+
+    ASSERT_TRUE(eval_int(L, "return (Ext.Enums.AttributeFlags[0x6] ~ 0x2).__Value", &v));
+    ASSERT_EQ(v, 4);
+
+    lua_close(L);
+}
+
+// A numeric *string* is not a label and must not be coerced into a mask.
+TEST(bitfield_bor_numeric_string_is_rejected) {
+    lua_State *L = make_state();
+    ASSERT_NOT_NULL(L);
+
+    char t[64] = {0};
+    ASSERT_TRUE(eval_string(L,
+        "local ok = pcall(function() return Ext.Enums.AttributeFlags[0x2] | '4' end)\n"
+        "return tostring(ok)", t, sizeof t));
+    ASSERT_STR_EQ(t, "false");
+
+    lua_close(L);
+}
+
+TEST(enum_eq_accepts_integer_operand) {
+    lua_State *L = make_state();
+    ASSERT_NOT_NULL(L);
+
+    char t[64] = {0};
+    ASSERT_TRUE(eval_string(L,
+        "local fire = Ext.Enums.DamageType.Fire\n"
+        "local eq = getmetatable(fire).__eq\n"
+        "return tostring(eq(fire, 7)) .. ',' .. tostring(eq(fire, 8)) .. ','\n"
+        "    .. tostring(eq(fire, 'Fire')) .. ',' .. tostring(eq(fire, '7'))",
+        t, sizeof t));
+    ASSERT_STR_EQ(t, "true,false,true,false");
+
+    lua_close(L);
+}
+
+// ---------------------------------------------------------------------------
 
 void register_enum_ext_tests(void) {
     printf("--- enum_ext (Ext.Enums lookup) ---\n");
@@ -217,4 +274,7 @@ void register_enum_ext_tests(void) {
     RUN_TEST(enum_unknown_label_is_nil);
     RUN_TEST(enum_out_of_range_integer_is_nil);
     RUN_TEST(enum_numeric_string_key_is_nil);
+    RUN_TEST(bitfield_bor_accepts_integer_operand);
+    RUN_TEST(bitfield_bor_numeric_string_is_rejected);
+    RUN_TEST(enum_eq_accepts_integer_operand);
 }

@@ -62,18 +62,20 @@ static int enum_index(lua_State *L) {
 static int enum_eq(lua_State *L) {
     EnumUserdata *ud = check_enum(L, 1);
 
-    // Compare with string (label)
-    if (lua_isstring(L, 2)) {
-        const char *other_label = lua_tostring(L, 2);
-        int64_t other_value = enum_find_value(ud->type_index, other_label);
-        lua_pushboolean(L, other_value >= 0 && (uint64_t)other_value == ud->value);
-        return 1;
-    }
-
-    // Compare with integer (value)
+    // Compare with integer (value). Tested BEFORE the label branch:
+    // lua_isstring() is true for numbers too (coercion), so the string test
+    // would swallow an integer operand and compare against the label "7".
     if (lua_isinteger(L, 2)) {
         lua_Integer other_value = lua_tointeger(L, 2);
         lua_pushboolean(L, (uint64_t)other_value == ud->value);
+        return 1;
+    }
+
+    // Compare with string (label)
+    if (lua_type(L, 2) == LUA_TSTRING) {
+        const char *other_label = lua_tostring(L, 2);
+        int64_t other_value = enum_find_value(ud->type_index, other_label);
+        lua_pushboolean(L, other_value >= 0 && (uint64_t)other_value == ud->value);
         return 1;
     }
 
