@@ -70,8 +70,10 @@ TEST(sub_type_tags_pinned_and_distinct) {
               MAKE_SUB_ID(SUB_TYPE_SYSTEM, 7));
 }
 
-/* The id must carry the full 32-bit salt<<16|index that entity_events.c's
- * pool_pack() produces, with no cross-talk into the type tag. */
+/* The id must carry a full 32-bit payload with no cross-talk into the type
+ * tag. The payload shape (salt<<16 | index) mirrors what entity_events.c's
+ * pool_pack() produces, but pool_pack() itself is not linked into tier 0:
+ * this pins the MAKE_SUB_ID/SUB_ID_* macros only. */
 TEST(sub_id_carries_full_salt_and_index) {
     const uint32_t packed = (0xBEEFu << 16) | 0x00FFu;   /* salt 0xBEEF, idx 255 */
     EntitySubscriptionId id = MAKE_SUB_ID(SUB_TYPE_COMPONENT, packed);
@@ -83,9 +85,11 @@ TEST(sub_id_carries_full_salt_and_index) {
 }
 
 /* A high index must not bleed into the type field (the cast in MAKE_SUB_ID is
- * what prevents sign-extension from an int index). */
+ * what prevents sign-extension from an int index). -1 is the all-ones int;
+ * (int)0xFFFFFFFF would say the same thing with implementation-defined
+ * conversion. */
 TEST(sub_id_high_index_does_not_bleed_into_type) {
-    EntitySubscriptionId id = MAKE_SUB_ID(SUB_TYPE_SYSTEM, (int)0xFFFFFFFF);
+    EntitySubscriptionId id = MAKE_SUB_ID(SUB_TYPE_SYSTEM, -1);
     ASSERT_EQ(SUB_ID_TYPE(id), 3u);
     ASSERT_EQ(SUB_ID_INDEX(id), 0xFFFFFFFFu);
     ASSERT_EQ(id, ((uint64_t)3 << 32) | 0xFFFFFFFFull);

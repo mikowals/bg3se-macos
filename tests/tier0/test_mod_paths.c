@@ -104,37 +104,42 @@ TEST(entry_dir_rejects_overflow) {
  * from `len >= dir_size` to `len > dir_size` — a one-byte NUL write past the
  * end of the caller's buffer — left all 68 tests green. Pin the exact
  * boundary in both directions, with a canary after the buffer. */
+/* One backing array with a smaller logical size: bytes past DIR_LEN are the
+ * canary. Unlike an adjacent struct member, an overflowing mutant writes into
+ * the same object here, so the check is defined behavior rather than UB. */
+#define DIR_LEN 4
 TEST(pak_stem_boundary_exact_fit_and_one_over) {
-    struct { char dir[4]; char canary[4]; } s;
+    char backing[DIR_LEN + 4];
 
-    memset(&s, 0x5A, sizeof(s));
-    ASSERT_TRUE(mod_se_dir_from_pak_name("/m/Abc.pak", s.dir, sizeof(s.dir)));
-    ASSERT_STR_EQ(s.dir, "Abc");                 /* 3 chars + NUL == 4 */
-    ASSERT_EQ(s.canary[0], (char)0x5A);
+    memset(backing, 0x5A, sizeof(backing));
+    ASSERT_TRUE(mod_se_dir_from_pak_name("/m/Abc.pak", backing, DIR_LEN));
+    ASSERT_STR_EQ(backing, "Abc");               /* 3 chars + NUL == 4 */
+    ASSERT_EQ(backing[DIR_LEN], (char)0x5A);
 
-    memset(&s, 0x5A, sizeof(s));
-    ASSERT_FALSE(mod_se_dir_from_pak_name("/m/Abcd.pak", s.dir, sizeof(s.dir)));
-    for (size_t i = 0; i < sizeof(s.canary); i++) {
-        ASSERT_EQ(s.canary[i], (char)0x5A);      /* 4 chars must NOT fit */
+    memset(backing, 0x5A, sizeof(backing));
+    ASSERT_FALSE(mod_se_dir_from_pak_name("/m/Abcd.pak", backing, DIR_LEN));
+    for (size_t i = DIR_LEN; i < sizeof(backing); i++) {
+        ASSERT_EQ(backing[i], (char)0x5A);       /* 4 chars must NOT fit */
     }
 }
 
 TEST(entry_dir_boundary_exact_fit_and_one_over) {
-    struct { char dir[4]; char canary[4]; } s;
+    char backing[DIR_LEN + 4];
 
-    memset(&s, 0x5A, sizeof(s));
+    memset(backing, 0x5A, sizeof(backing));
     ASSERT_TRUE(mod_entry_se_config_dir(
-        "Mods/Abc/ScriptExtender/Config.json", s.dir, sizeof(s.dir)));
-    ASSERT_STR_EQ(s.dir, "Abc");
-    ASSERT_EQ(s.canary[0], (char)0x5A);
+        "Mods/Abc/ScriptExtender/Config.json", backing, DIR_LEN));
+    ASSERT_STR_EQ(backing, "Abc");
+    ASSERT_EQ(backing[DIR_LEN], (char)0x5A);
 
-    memset(&s, 0x5A, sizeof(s));
+    memset(backing, 0x5A, sizeof(backing));
     ASSERT_FALSE(mod_entry_se_config_dir(
-        "Mods/Abcd/ScriptExtender/Config.json", s.dir, sizeof(s.dir)));
-    for (size_t i = 0; i < sizeof(s.canary); i++) {
-        ASSERT_EQ(s.canary[i], (char)0x5A);
+        "Mods/Abcd/ScriptExtender/Config.json", backing, DIR_LEN));
+    for (size_t i = DIR_LEN; i < sizeof(backing); i++) {
+        ASSERT_EQ(backing[i], (char)0x5A);
     }
 }
+#undef DIR_LEN
 
 /* Only the .pak extension is stripped, and only from the end. */
 TEST(pak_stem_strips_one_extension_only) {

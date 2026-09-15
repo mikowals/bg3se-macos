@@ -110,12 +110,13 @@ TEST(check_address_own_stack) {
 
 /* ── AUDIT ADDITIONS ─────────────────────────────────────────────── */
 
-/* GAP: read_gpu_region_rejected below cannot fail — 0x4900000000 is unmapped
- * in this process, so safe_memory_read() rejects it via the kernel whether or
- * not the carveout pre-check exists. The whole 0x10..0x70 GB range is reserved
- * (mach_vm_allocate returns KERN_NO_SPACE at every probe), so the pre-check is
- * not observable offline. What IS pinnable is the predicate itself, including
- * the exact faulting addresses recorded in safe_memory.c's comment. */
+/* read_gpu_region_rejected below cannot distinguish the carveout pre-check
+ * from the kernel: 0x4900000000 is unmapped in this process, so
+ * safe_memory_read() rejects it either way, and the whole 0x10..0x70 GB range
+ * is reserved (mach_vm_allocate returns KERN_NO_SPACE at every probe). The
+ * pre-check stays mutation-equivalent offline. What IS pinnable is the
+ * predicate itself, including the exact faulting addresses recorded in
+ * safe_memory.c's comment. */
 TEST(gpu_region_pins_documented_range) {
     /* Addresses taken from real crashes, per the comment in safe_memory.c. */
     ASSERT_TRUE(safe_memory_is_gpu_region(0x49000004a6ULL));
@@ -167,45 +168,49 @@ TEST(check_address_in_unmapped_gap_is_invalid) {
 }
 
 /* GAP: both existing read_string tests are negative (NULL addr / NULL buf), so
- * the copy loop itself is untested. Changing `i < max_len - 1` to `i < max_len`
- * — a one-byte heap/stack overflow — kept the suite green. */
+ * the copy loop itself was untested. These pin the observable contract: the
+ * copy, truncation to max_len-1 characters, and the trailing NUL, with bytes
+ * past max_len left untouched. Note what they do NOT catch: relaxing the loop
+ * bound to `i < max_len` is output-equivalent, because the loop only ever
+ * writes buffer[i] for i < max_len and the final `buffer[max_len - 1] = '\0'`
+ * rewrites the last byte either way.
+ *
+ * Canaries live in the same backing array as the buffer (logical size smaller
+ * than the array) so an overflowing mutant is observed as defined behavior. */
 TEST(read_string_copies_and_terminates) {
     static const char src[] = "BG3MCM";
-    struct { char buf[16]; char canary[8]; } s;
-    memset(&s, 0x7E, sizeof(s));
+    char backing[16 + 8];
+    memset(backing, 0x7E, sizeof(backing));
 
-    ASSERT_TRUE(safe_memory_read_string((mach_vm_address_t)src,
-                                        s.buf, sizeof(s.buf)));
-    ASSERT_STR_EQ(s.buf, "BG3MCM");
-    for (size_t i = 0; i < sizeof(s.canary); i++) {
-        ASSERT_EQ(s.canary[i], (char)0x7E);
+    ASSERT_TRUE(safe_memory_read_string((mach_vm_address_t)src, backing, 16));
+    ASSERT_STR_EQ(backing, "BG3MCM");
+    for (size_t i = 16; i < sizeof(backing); i++) {
+        ASSERT_EQ(backing[i], (char)0x7E);
     }
 }
 
 TEST(read_string_truncates_within_max_len) {
     static const char src[] = "ABCDEFGH";
-    struct { char buf[4]; char canary[8]; } s;
-    memset(&s, 0x7E, sizeof(s));
+    char backing[4 + 8];
+    memset(backing, 0x7E, sizeof(backing));
 
-    ASSERT_TRUE(safe_memory_read_string((mach_vm_address_t)src,
-                                        s.buf, sizeof(s.buf)));
-    ASSERT_STR_EQ(s.buf, "ABC");          /* max_len-1 chars kept */
-    ASSERT_EQ(s.buf[3], '\0');            /* always NUL-terminated */
-    for (size_t i = 0; i < sizeof(s.canary); i++) {
-        ASSERT_EQ(s.canary[i], (char)0x7E);   /* never writes buf[max_len] */
+    ASSERT_TRUE(safe_memory_read_string((mach_vm_address_t)src, backing, 4));
+    ASSERT_STR_EQ(backing, "ABC");        /* max_len-1 chars kept */
+    ASSERT_EQ(backing[3], '\0');          /* always NUL-terminated */
+    for (size_t i = 4; i < sizeof(backing); i++) {
+        ASSERT_EQ(backing[i], (char)0x7E);   /* never writes buf[max_len] */
     }
 }
 
 TEST(read_string_exact_fit_no_overflow) {
     static const char src[] = "abc";
-    struct { char buf[4]; char canary[8]; } s;
-    memset(&s, 0x7E, sizeof(s));
+    char backing[4 + 8];
+    memset(backing, 0x7E, sizeof(backing));
 
-    ASSERT_TRUE(safe_memory_read_string((mach_vm_address_t)src,
-                                        s.buf, sizeof(s.buf)));
-    ASSERT_STR_EQ(s.buf, "abc");
-    for (size_t i = 0; i < sizeof(s.canary); i++) {
-        ASSERT_EQ(s.canary[i], (char)0x7E);
+    ASSERT_TRUE(safe_memory_read_string((mach_vm_address_t)src, backing, 4));
+    ASSERT_STR_EQ(backing, "abc");
+    for (size_t i = 4; i < sizeof(backing); i++) {
+        ASSERT_EQ(backing[i], (char)0x7E);
     }
 }
 
