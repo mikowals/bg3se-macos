@@ -8,6 +8,8 @@
  *
  * HOME is redirected to a temp directory before the first persist call so the
  * module writes under <tmp>/Library/Application Support/BG3SE/persistentvars/.
+ * The fixture is hermetic: the original HOME is restored and the temp tree is
+ * removed with mkdir/unlink/rmdir, no shell involved.
  */
 
 #include "test_harness.h"
@@ -21,10 +23,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "lua_persistentvars.h"
 
 static char s_test_home[PATH_MAX];
+static char s_saved_home[PATH_MAX];
+static int  s_saved_home_set;
 
 static void setup_home(void) {
     if (s_test_home[0] != '\0') return;
@@ -34,12 +39,42 @@ static void setup_home(void) {
     ASSERT_NOT_NULL(mkdtemp(s_test_home));
     // persist_init() only mkdirs the leaf; pre-create the intermediate dirs
     // that exist in a real $HOME.
-    char cmd[PATH_MAX + 64];
-    snprintf(cmd, sizeof(cmd),
-             "mkdir -p '%s/Library/Application Support'", s_test_home);
-    ASSERT_EQ(system(cmd), 0);
+    char dir[PATH_MAX];
+    snprintf(dir, sizeof(dir), "%s/Library", s_test_home);
+    ASSERT_EQ(mkdir(dir, 0700), 0);
+    snprintf(dir, sizeof(dir), "%s/Library/Application Support", s_test_home);
+    ASSERT_EQ(mkdir(dir, 0700), 0);
     // Must happen before the FIRST persist call: get_support_dir() caches HOME.
+    const char *home = getenv("HOME");
+    if (home) {
+        snprintf(s_saved_home, sizeof(s_saved_home), "%s", home);
+        s_saved_home_set = 1;
+    }
     setenv("HOME", s_test_home, 1);
+}
+
+// Remove the temp HOME tree: the persistentvars file, then each directory
+// from the leaf up. Restores the caller's HOME.
+static void teardown_home(void) {
+    if (s_test_home[0] == '\0') return;
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path),
+             "%s/Library/Application Support/BG3SE/persistentvars/BG3SE_T0.json",
+             s_test_home);
+    (void)unlink(path);
+    static const char *const leaves[] = {
+        "/Library/Application Support/BG3SE/persistentvars",
+        "/Library/Application Support/BG3SE",
+        "/Library/Application Support",
+        "/Library",
+        "",
+    };
+    for (size_t i = 0; i < sizeof(leaves) / sizeof(leaves[0]); i++) {
+        snprintf(path, sizeof(path), "%s%s", s_test_home, leaves[i]);
+        (void)rmdir(path);
+    }
+    if (s_saved_home_set) setenv("HOME", s_saved_home, 1); else unsetenv("HOME");
+    s_test_home[0] = '\0';
 }
 
 static char *pv_file_path(char *buf, size_t n) {
@@ -123,15 +158,11 @@ TEST(persist_roundtrip_restores_values) {
         "assert(pv.num == 42, 'num: ' .. tostring(pv.num))\n"
         "assert(pv.nested.list[2] == 2, 'nested list')\n"), LUA_OK);
     lua_close(L);
-
-    // Cleanup the temp HOME tree (best-effort).
-    char cmd[PATH_MAX + 16];
-    snprintf(cmd, sizeof(cmd), "rm -rf '%s'", s_test_home);
-    (void)system(cmd);
 }
 
 void register_persistentvars_tests(void) {
     printf("[persistentvars]\n");
     RUN_TEST(persist_save_writes_live_table);
     RUN_TEST(persist_roundtrip_restores_values);
+    teardown_home();
 }

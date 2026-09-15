@@ -394,7 +394,6 @@ if(BUILD_TESTS)
         ${CMAKE_SOURCE_DIR}/src/lua
         ${CMAKE_SOURCE_DIR}/src/hooks
         ${CMAKE_SOURCE_DIR}/src/enum
-        ${CMAKE_SOURCE_DIR}/src/osiris
         ${LUA_SRC_DIR}
     )
     target_link_libraries(bg3se_test_tier0 PRIVATE lua_static "-framework Foundation")

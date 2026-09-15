@@ -3838,9 +3838,12 @@ static void dispatch_event_to_lua(const char *eventName, int arity,
 /**
  * Hooked COsiris::Event - called for all Osiris events
  * Mangled name: _ZN7COsiris5EventEjP16COsiArgumentDesc
- * Signature: void COsiris::Event(unsigned int funcId, COsiArgumentDesc* args)
+ * Signature: COsiris::Event(unsigned int funcId, COsiArgumentDesc* args)
+ *
+ * Itanium mangling omits the return type, and the shipped binary returns a
+ * value in x0 (`mov x0, x19` before ret), so the wrapper is uint64_t and
+ * forwards the original's x0 exactly as fake_InitGame does.
  */
-/* Same rule as fake_InitGame: the target returns in x0 (`mov x0, x19`). */
 static uint64_t fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
     uint64_t orig_ret = 0;
     event_call_count++;
