@@ -1,0 +1,1 @@
+Closing as out of scope. Main has logging callbacks but no debugger transport, no DAP server, no breakpoints, stepping, pause model or variable inspection, and DAP is a listed parity exclusion in `docs/deferrals.md`. If this comes back, it starts as a fresh design issue covering transport, Lua hook behavior, game-thread suspension and server/client context safety.

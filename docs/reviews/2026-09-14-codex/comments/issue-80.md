@@ -1,0 +1,3 @@
+Main now drains the command queue, serializes Lua, preserves output order, and avoids the TextKit output-flood crash. The input path remains broken: an editable `NSTextField` makes the overlay the key window (`src/overlay/overlay.m`), `overlay_is_visible` deadlocks when invoked on the main queue because it synchronously dispatches there, the CGEvent tap is listen-only, and overlay errors are dropped for the console slot. The Mods and Entities tabs remain placeholders.
+
+The fix moves input out of AppKit and into the existing ImGui backend. That work has its own plan and will not ride the v0.44.0 release. Until then, the socket console (`bg3se-console`, or `nc -U /tmp/bg3se.sock`) is the supported interface. Keeping this open as the tracking issue.

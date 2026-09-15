@@ -26,12 +26,14 @@ static int enum_type_index(lua_State *L) {
         return 1;
     }
 
-    // String key: Look up by label
-    if (lua_isstring(L, 2)) {
-        const char *label = lua_tostring(L, 2);
-        int64_t value = enum_find_value(type_index, label);
+    // Integer key: Look up by value
+    if (lua_isinteger(L, 2)) {
+        lua_Integer value = lua_tointeger(L, 2);
 
-        if (value >= 0) {
+        // Verify value is valid for this enum type
+        const char *label = enum_find_label(type_index, (uint64_t)value);
+        if (label || info->is_bitfield) {
+            // For bitfields, any combination of valid flags is allowed
             if (info->is_bitfield) {
                 bitfield_push(L, (uint64_t)value, type_index);
             } else {
@@ -40,14 +42,12 @@ static int enum_type_index(lua_State *L) {
             return 1;
         }
     }
-    // Integer key: Look up by value
-    else if (lua_isinteger(L, 2)) {
-        lua_Integer value = lua_tointeger(L, 2);
+    // String key: Look up by label
+    else if (lua_type(L, 2) == LUA_TSTRING) {
+        const char *label = lua_tostring(L, 2);
+        int64_t value = enum_find_value(type_index, label);
 
-        // Verify value is valid for this enum type
-        const char *label = enum_find_label(type_index, (uint64_t)value);
-        if (label || info->is_bitfield) {
-            // For bitfields, any combination of valid flags is allowed
+        if (value >= 0) {
             if (info->is_bitfield) {
                 bitfield_push(L, (uint64_t)value, type_index);
             } else {

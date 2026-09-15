@@ -1,0 +1,1 @@
+Closing as out of scope. `Ext.UI` stays an intentional compatibility stub and Noesis is excluded from parity accounting in `docs/deferrals.md`. The Noesis and input-pipeline RE notes under `ghidra/offsets/` remain the starting point if this is revived. MCM and the other UI-bearing mods run on the ImGui surface and do not need this epic.

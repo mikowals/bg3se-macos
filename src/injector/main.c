@@ -2525,6 +2525,15 @@ static int lua_global_dump(lua_State *L) {
     int t = lua_type(L, 1);
     const char *tname = lua_typename(L, t);
 
+    // Component/entity proxies are userdata with __pairs; dump them as JSON
+    // like tables so _D(entity.Health) shows fields, not a pointer.
+    if (t == LUA_TUSERDATA) {
+        if (luaL_getmetafield(L, 1, "__pairs") != LUA_TNIL) {
+            lua_pop(L, 1);
+            t = LUA_TTABLE;
+        }
+    }
+
     switch (t) {
         case LUA_TNIL:
             LOG_LUA_INFO("_D: nil");
@@ -3272,7 +3281,12 @@ static void fake_RegisterDIVFunctions(void *thisPtr, DivFunctions *functions) {
  * Mangled name: _ZN7COsiris8InitGameEv
  * This is a member function, so 'this' pointer is first arg
  */
-static void fake_InitGame(void *thisPtr) {
+/* MUST return a value: COsiris::InitGame returns story-init status in x0
+ * (the shipped code ends `mov x0, x23`). A `void` wrapper lets whatever the
+ * trailing code below leaves in x0 become the engine's result, which aborts
+ * "start a new game" nondeterministically. */
+static uint64_t fake_InitGame(void *thisPtr) {
+    uint64_t orig_ret = 0;
     initGame_call_count++;
     LOG_OSIRIS_DEBUG(">>> COsiris::InitGame called! (count: %d, this: %p)", initGame_call_count, thisPtr);
 
@@ -3291,7 +3305,7 @@ static void fake_InitGame(void *thisPtr) {
 
     // Call original
     if (orig_InitGame) {
-        ((void (*)(void*))orig_InitGame)(thisPtr);
+        orig_ret = ((uint64_t (*)(void*))orig_InitGame)(thisPtr);
     }
 
     LOG_OSIRIS_DEBUG(">>> COsiris::InitGame returned");
@@ -3338,6 +3352,8 @@ static void fake_InitGame(void *thisPtr) {
         }
     }
     lua_gate_unlock();
+
+    return orig_ret;
 }
 
 /**
@@ -3822,9 +3838,14 @@ static void dispatch_event_to_lua(const char *eventName, int arity,
 /**
  * Hooked COsiris::Event - called for all Osiris events
  * Mangled name: _ZN7COsiris5EventEjP16COsiArgumentDesc
- * Signature: void COsiris::Event(unsigned int funcId, COsiArgumentDesc* args)
+ * Signature: COsiris::Event(unsigned int funcId, COsiArgumentDesc* args)
+ *
+ * Itanium mangling omits the return type, and the shipped binary returns a
+ * value in x0 (`mov x0, x19` before ret), so the wrapper is uint64_t and
+ * forwards the original's x0 exactly as fake_InitGame does.
  */
-static void fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
+static uint64_t fake_Event(void *thisPtr, uint32_t funcId, OsiArgumentDesc *args) {
+    uint64_t orig_ret = 0;
     event_call_count++;
 
     // Poll for console commands and run tick systems
@@ -4057,7 +4078,7 @@ after_tick:
 
     // Call original
     if (orig_Event) {
-        ((OsiEventFn)orig_Event)(thisPtr, funcId, args);
+        orig_ret = ((OsiEventFn)orig_Event)(thisPtr, funcId, args);
     }
 
     // Dispatch to "after" callbacks
@@ -4066,6 +4087,8 @@ after_tick:
     }
 
     lua_context_set(prevCtx);
+
+    return orig_ret;
 }
 
 /**

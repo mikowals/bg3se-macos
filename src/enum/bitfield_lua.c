@@ -31,11 +31,13 @@ static int popcount64(uint64_t value) {
 
 // Get flag value from string or integer argument
 static int64_t get_flag_value(lua_State *L, int idx, int type_index) {
-    if (lua_isstring(L, idx)) {
+    // Integer first: lua_isstring() is true for numbers too (coercion), so a
+    // numeric operand would otherwise be looked up as the label "2" and fail.
+    if (lua_isinteger(L, idx)) {
+        return lua_tointeger(L, idx);
+    } else if (lua_type(L, idx) == LUA_TSTRING) {
         const char *label = lua_tostring(L, idx);
         return enum_find_value(type_index, label);
-    } else if (lua_isinteger(L, idx)) {
-        return lua_tointeger(L, idx);
     } else {
         BitfieldUserdata *bf = test_bitfield(L, idx);
         if (bf && bf->type_index == type_index) {

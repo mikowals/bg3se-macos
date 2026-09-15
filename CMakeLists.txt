@@ -363,6 +363,11 @@ if(BUILD_TESTS)
         tests/tier0/test_mod_paths.c
         tests/tier0/test_lua_runtime.c
         tests/tier0/test_guid_lookup.c
+        tests/tier0/test_persistentvars.c
+        tests/tier0/test_json_proxies.c
+        tests/tier0/test_arm64_prologue.c
+        tests/tier0/test_enum_ext.c
+        tests/tier0/test_osi_hook_abi.c
         tests/tier0/stub_logging.c
         src/core/safe_memory.c
         src/entity/guid_lookup.c
@@ -370,6 +375,15 @@ if(BUILD_TESTS)
         src/mod/mod_paths.c
         src/lua/lua_runtime.c
         src/lua/lua_context.c
+        src/lua/lua_persistentvars.c
+        src/lua/lua_json.c
+        src/hooks/arm64_decode.c
+        src/hooks/arm64_hook.c
+        src/enum/enum_registry.c
+        src/enum/enum_definitions.c
+        src/enum/enum_lua.c
+        src/enum/bitfield_lua.c
+        src/enum/enum_ext.c
     )
     target_include_directories(bg3se_test_tier0 PRIVATE
         ${CMAKE_SOURCE_DIR}/tests/tier0
@@ -378,6 +392,8 @@ if(BUILD_TESTS)
         ${CMAKE_SOURCE_DIR}/src/entity
         ${CMAKE_SOURCE_DIR}/src/mod
         ${CMAKE_SOURCE_DIR}/src/lua
+        ${CMAKE_SOURCE_DIR}/src/hooks
+        ${CMAKE_SOURCE_DIR}/src/enum
         ${LUA_SRC_DIR}
     )
     target_link_libraries(bg3se_test_tier0 PRIVATE lua_static "-framework Foundation")

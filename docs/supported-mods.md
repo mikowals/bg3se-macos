@@ -9,7 +9,7 @@ Use the harness CLI to vet mods against the current build:
 ```bash
 # Vet a mod from the catalog, by Nexus ID, or by local PAK path
 PYTHONPATH=tools python3 -m bg3se_harness compat vet mcm
-PYTHONPATH=tools python3 -m bg3se_harness compat vet 8901
+PYTHONPATH=tools python3 -m bg3se_harness compat vet 9162
 PYTHONPATH=tools python3 -m bg3se_harness compat vet /path/to/mod.pak
 
 # Run all scenarios
@@ -38,7 +38,7 @@ Mods are tiered by community impact. Tier 1 mods gate hundreds of downstream mod
 
 | Mod | Nexus | APIs Used | Status | Notes |
 |-----|-------|-----------|--------|-------|
-| [Mod Configuration Menu](https://www.nexusmods.com/baldursgate3/mods/8901) | 8901 | IMGUI, Net, Vars, ModEvents, Events, Mod | ✅ Working (v0.41.0) | Gate mod. 500+ mods depend on it. 18K lines Lua. Vetted 2026-07-30, 27/27 assertions, baseline saved. |
+| [Mod Configuration Menu](https://www.nexusmods.com/baldursgate3/mods/9162) | 9162 | IMGUI, Net, Vars, ModEvents, Events, Mod | ✅ Working (v0.41.0) | Gate mod. 500+ mods depend on it. 18K lines Lua. Vetted 2026-07-30, 27/27 assertions, baseline saved. |
 | [Community Library](https://www.nexusmods.com/baldursgate3/mods/1333) | 1333 | Stats, Entity, Osiris, Events, Utils, ModEvents | ✅ Working (v0.41.0) | Shared dependency for hundreds of mods. Vetted 2026-07-30, 25/25 pipeline steps, baseline saved. |
 | [5e Spells](https://www.nexusmods.com/baldursgate3/mods/366) | 366 | Stats, Osiris, Events, StaticData | ✅ Working (v0.41.0) | Most endorsed SE spell mod. Tests Stats + functors. Vetted 2026-07-30, 23/23 pipeline steps, baseline saved. |
 | [Expansion - Level 20](https://www.nexusmods.com/baldursgate3/mods/3755) | 3755 | Stats, Entity, Osiris, StaticData | ✅ Working (v0.41.0) | Levels 13-20. Tests Stats, progression, StaticData. Vetted 2026-07-30, 22/22 pipeline steps, baseline saved. |
@@ -85,7 +85,7 @@ Each `compat vet` run produces a JSON report in `docs/compat-reports/`:
 ```json
 {
   "mod_name": "Mod Configuration Menu",
-  "nexus_id": 8901,
+  "nexus_id": 9162,
   "bg3se_version": "v0.41.0",
   "timestamp": "2026-07-30T...",
   "status": "working|partial|broken|not_loaded|needs_launch|no_socket",

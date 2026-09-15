@@ -1,0 +1,1 @@
+Fixed in `684120c`. The harness, the shell scripts and the dylib itself resolve the game through `BG3SE_GAME_PATH`, then the default Steam library, then every library listed in `steamapps/libraryfolders.vdf`—external drives work without a symlink. For an unusual layout, point `BG3SE_GAME_PATH` at the `.app` bundle or its parent directory. Thanks for the report. Closing.
