@@ -1,4 +1,4 @@
-# API Status (v0.43.0)
+# API Status (v0.44.0)
 
 Full namespace-by-namespace parity status with Windows BG3SE.
 
@@ -12,7 +12,7 @@ Overall parity remains approximately 94.8% pending recomputation after Wave 7 li
 - **Ext.Events** - 33 events with priority ordering, Once flag, Prevent pattern (13 lifecycle + 17 engine + 2 functor + 1 network events), **runtime mod attribution** (per-handler mod tracking, soft-disable, health stats)
 - **Ext.Timer** - **20 functions**: WaitFor, WaitForRealtime, Cancel/Pause/Resume, GameTime/DeltaTime/Ticks, **Persistent timers** (save/load support)
 - **Ext.Vars** - PersistentVars, User Variables, Mod Variables
-- **Ext.StaticData** - Immutable game data (**All 9 types**: Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription via ForceCapture)
+- **Ext.StaticData** - Immutable game data (**10 types**: Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription, CharacterCreationAppearanceVisual via ForceCapture; typed field layouts in `src/staticdata/staticdata_layouts.c`, canonical GUID text)
 - **Ext.Resource** - Non-GUID resources (34 types: Visual, Material, Texture, Dialog, etc.)
 - **Ext.Template** - Game object templates (14 functions, 10 properties, type detection via VMT)
 - **Ext.Types** - **10/13 (76.9%)** against the 14-function Windows registration block. Wave 7 A3 makes Construct's error surface exact (`Unknown type name`, `Unable to construct non-object type`, `Type ... is not constructible`); valid object types reach the shared upstream TODO and return 0 values, so Construct remains matched upstream and leaves the denominator. Behavioral: GetAllTypes (~2050), GetTypeInfo, GetObjectType, TypeOf, IsA, Validate, **GetValueType**, **GetFunctionLocation**, and **Serialize/Unserialize**. Missing: GetHashSetValueAt and **AddCustomFunction/AddCustomProperty**. GetComponentLayout, GetAllLayouts, and GenerateIdeHelpers are macOS extras outside the denominator.

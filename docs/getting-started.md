@@ -21,7 +21,7 @@ This guide covers installation, building, and running BG3SE-macOS.
 
 | Item | Version/Info |
 |------|--------------|
-| **BG3 Version** | 4.1.1.6995620 (tested Dec 2025) |
+| **BG3 Version** | 4.1.1.7398727 (verified 2026-09-15; per-version offset table also covers 7209685 and 6995620) |
 | **macOS** | 12+ (tested on macOS 15.6.1) |
 | **Architecture** | ARM64 (Apple Silicon) - primary target |
 | **Rosetta/Intel** | Builds but Ghidra offsets are ARM64-only |

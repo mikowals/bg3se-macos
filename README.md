@@ -112,7 +112,7 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 
 ## Status
 
-**Version:** v0.42.0 | **Feature Parity:** approximately 94.8% under behavioral accounting with per-function contract diffs (fail-closed stubs score zero, macOS-only extras earn no credit), sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix) | **Deferrals:** [docs/deferrals.md](docs/deferrals.md)
+**Version:** v0.44.0 | **Feature Parity:** approximately 94.8% under behavioral accounting with per-function contract diffs (fail-closed stubs score zero, macOS-only extras earn no credit), sourced from the [roadmap matrix](ROADMAP.md#feature-parity-matrix) | **Deferrals:** [docs/deferrals.md](docs/deferrals.md)
 
 | Feature | Status |
 |---------|--------|
@@ -130,7 +130,7 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 | Ext.Math | ✅ **59/59 (100%)** — vector/matrix operations, **16 quaternion functions**, scalar utils, Fract, **Smoothstep, IsNaN** |
 | Ext.Enums | ✅ 14 enum/bitfield types |
 | Ext.Types | ⚠️ **10/13 (76.9%)** — reflection API with **GetValueType**, **GetFunctionLocation**, and **Serialize/Unserialize** (component-proxy) real; GetHashSetValueAt, AddCustomFunction, and AddCustomProperty are missing (the latter two are functional on Windows), and Construct matches the Windows reference's own unimplemented TODO ([docs/deferrals.md](docs/deferrals.md)) |
-| Ext.StaticData | ✅ **All 9 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription) via ForceCapture |
+| Ext.StaticData | ✅ **10 types** (Feat, Race, Background, Origin, God, Class, Progression, ActionResource, FeatDescription, CharacterCreationAppearanceVisual) via ForceCapture; typed field layouts |
 | Ext.Resource | ✅ Get, GetAll, GetTypes, GetCount (34 resource types) |
 | Ext.Template | ✅ **Auto-capture**, iteration (Cache/LocalCache), GUID resolution |
 | Ext.Level | ⚠️ **20/25 (80%)** — TestBox, TestSphere, GetHeightsAt (real multi-subgrid walk), singleton accessors, all 8 sweeps (incl. **cylinders**), **GetEntitiesOnTile**, and the pathfinding suite (**GetPathById, ReleasePath, GetActivePathfindingRequests, FindPath**); physics dispatch repaired against the audited macOS vtable. 5 deferrals: RaycastClosest/All/Any (quarantined), GetTileDebugInfo, BeginPathfinding ([docs/deferrals.md](docs/deferrals.md)) |
@@ -147,7 +147,7 @@ Many more mods work out of the box. See **[docs/supported-mods.md](docs/supporte
 | Osi.DB_* | ✅ Generic database query accessor (`Osi.DB_Players:Get()`, etc.) |
 | Crash Attribution | ✅ **Runtime mod tracking** — per-handler mod name, `!mod_diag` console, soft-disable, enhanced crash reports with mod context |
 | Version Detection | ✅ Sentinel address probes for game version mismatch tolerance (Issue #78) |
-| Testing | ✅ 4-tier: 137 C (Tier 0) + 361 pytest (Tier H) + 114 `!test` (Tier 1) + 110 `!test_ingame` (Tier 2) = **722 tests**, Debug.* helpers |
+| Testing | ✅ 4-tier: 141 C (Tier 0) + 368 pytest (Tier H) + 114 `!test` (Tier 1) + 114 `!test_ingame` (Tier 2) = **737 tests**, Debug.* helpers |
 | Headless CLI | ✅ `launch --headless` — windowed 1280x720, socket responds at main menu, window hidden via System Events |
 
 [^stats-stubs]: Remaining gaps behind function-count parity: AddAttribute returns false and ExecuteFunctors is partial. AddEnumerationValue uses engine `ValueList::Insert` with FixedString interning and verified bidirectional readback (`ghidra/offsets/VALUELIST_INSERT.md`). Passive sync remains false after PARTIAL-GO recon because `Boosts` still needs an LTO closure ABI; interrupt sync remains false. TreasureTable/TreasureCategory reads, GetStatsLoadedMods, and spell/status prototype sync return real data.

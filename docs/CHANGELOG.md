@@ -13,9 +13,11 @@ Each entry includes:
 
 ---
 
-## [Unreleased] - 2026-09-14 — PR integration pass: five silent-wrong-value fixes, tier-0 hardening
+## [v0.44.0] - 2026-09-15 — First release on 4.1.1.7398727: PR integration, live verification, StaticData banks, toolchain probe
 
-**Category:** Correctness / Tests | **Plan:** docs/plans/2026-09-14-001-chore-pr-issue-triage-v0430-plan.md | **PRs:** #101, #103 (@mikowals)
+**Category:** Release / Correctness / Tests | **Plan:** docs/plans/2026-09-14-001-chore-pr-issue-triage-v0430-plan.md | **PRs:** #101, #103 (@mikowals) | **Verified on:** BG3 4.1.1.7398727 (arm64 LC_UUID `0C51CAED-6D60-3DCD-9299-8519C92631B0`)
+
+v0.44.0 is the first release since v0.39.0 (2026-04-24). It ships everything in the four dated sections below (2026-08-02 through 2026-09-15): the offline offset migration to 7398727, the Wave 7 Phase 1 dual-VM work, the #101/#103 integration, and the Phase 5/6 live-verification fixes.
 
 ### Fixed
 
@@ -113,9 +115,63 @@ Each entry includes:
   asserts the terminator before `strcmp`; pattern-scan and safe-memory comment
   corrections.
 
+### Added (Phase 6, 2026-09-15)
+
+- **`Ext.StaticData` type `CharacterCreationAppearanceVisual`** (#100) —
+  `eoc::CharacterCreationAppearanceVisualManager` is captured through the
+  existing TypeContext name match (`src/staticdata/staticdata_manager.c`), and
+  entries expose the Windows property surface through a new data-driven layout
+  table (`src/staticdata/staticdata_layouts.c`): `RootTemplate`, `RaceUUID`,
+  `BodyType`, `BodyShape`, `SlotName`, `VisualResource`, `HeadAppearanceUUID`,
+  `DefaultSkinColor`, `DisplayName` (TranslatedString as
+  `{Handle={Handle,Version}, ArgumentString={…}}`), `IconIdOverride`,
+  `DefaultForBodyType`, `TextureEntryPart`, `Tags` (GUID array). Unreadable
+  fields are omitted, never faked. BG3SX's `SessionLoaded` handler no longer
+  aborts on the unknown-type error. Tier 0 audits every layout (ascending,
+  aligned, inside the stride); tier 2 checks count, fields, and the
+  `RaceUUID → Race` and `Get(type, ResourceUUID)` round trips live.
+- **Configure-time Objective-C++ toolchain probe** (#77, #88) —
+  `CMakeLists.txt` compiles `<tuple>` + `<MetalKit/MetalKit.h>` before any
+  target is generated and fails with `xcode-select -p`, `xcrun --show-sdk-path`,
+  `CMAKE_OSX_SYSROOT`, the compiler, and where `<tuple>` was found, plus the
+  three fixes in likelihood order. `-DBG3SE_SKIP_TOOLCHAIN_PROBE=ON` bypasses
+  it. The July reply on #88 credited SDK auto-detection (`720d067`, 2026-03-31)
+  as the fix; it predates the report and was not.
+- **`bg3se-harness doctor` toolchain checks** (#88) — five new warning-level
+  rows: `toolchain_developer_dir`, `toolchain_macos_sdk`,
+  `toolchain_objcxx_compiler`, `toolchain_objcxx_includes` (the same include
+  chain as the CMake probe, compiled against the SDK xcrun reports), and
+  `toolchain_cmake`. Missing tools and timeouts degrade to readable failures.
+  `docs/harness.md` previously claimed `doctor` verified the SDK; it did not.
+
+### Fixed (Phase 6, 2026-09-15)
+
+- **`Ext.StaticData.GetAll()` returned empty or garbage entries for most types**
+  (`src/staticdata/staticdata_manager.c`) — the TypeContext "manager" pointer
+  the accessors dereferenced is the type's `m_TypeIndex` global, not a
+  resource bank (`eoc::FeatManager` slot ↔ unslid `0x108927c30`, the `nm`
+  address of `ls::TypeId<…>::m_TypeIndex`), so `+0x7C`/`+0x80` read
+  neighbouring globals: `Feat` count 0, `Class` count 24576. Only
+  `ActionResource` (Get<T> hook) had real entries, and its 0x80 stride was
+  also wrong. Every type now resolves its `GuidResourceBank<T>` through the
+  headmaster hash table at post-init and lazily on access, entries come from
+  the bank's flat `Values` array, and the stride is measured live from the
+  entry vtable repeat (Race 0x168, Background 0x70, Class 0x110,
+  ActionResource 0x60, FeatDescription 0x60 on 7398727; a stale constant is
+  logged and overridden). The Feat-only accessor duplicates and the metadata
+  probing helpers are gone. `ghidra/offsets/STATICDATA_MANAGERS.md` revised.
+- **`Ext.StaticData` GUID text was pair-swapped in the last two groups**
+  (`src/staticdata/staticdata_manager.c`) — `ResourceUUID` was formatted, and
+  `Get(type, guid)` parsed, in memory order, but `ls::Guid` stores the D and E
+  groups with adjacent byte pairs swapped. Canonical GUIDs from the game's
+  `.lsx` files (Human race `0eb594cb-8820-4be6-a58d-8be7a1a98fba`) never
+  matched. Both directions now use the entity system's `guid_parse()` /
+  `guid_to_string()` (Phase 5 verified against the host character). Same
+  defect class as the component-GUID fix above.
+
 ### Changed
 
-- **Tier 0: 68 → 137 tests.** #103 adds 23 mutation-hardening cases
+- **Tier 0: 68 → 141 tests.** Phase 6 adds 4 StaticData layout audits (tier H 361 → 368 with the doctor toolchain suite; tier 2 110 → 114). #103 adds 23 mutation-hardening cases
   (safe_memory, mod_paths, pattern_scan, entity_events); #101 adds 22 across
   five new suites; the integration pass adds 15 (JSON cycles/depth/fail-soft,
   enum operands); the review follow-ups add 9 (callback-count and
@@ -134,7 +190,7 @@ Each entry includes:
 - Codex review reports for #91, #101, #103 and the issue triage under
   `docs/reviews/2026-09-14-codex/`. Draft maintainer comments alongside.
 
-## [Unreleased] - 2026-08-04 (later) — Offset re-migration to 4.1.1.7398727 (offline complete)
+## [v0.44.0] - 2026-08-04 (later) — Offset re-migration to 4.1.1.7398727 (offline complete)
 
 **Category:** Migration / RE | **Plan:** docs/plans/2026-08-04-001-feat-offset-remigration-7398727-plan.md
 
@@ -187,7 +243,7 @@ Each entry includes:
 
 ---
 
-## [Unreleased] - 2026-08-04 — Live verification session + game update to 4.1.1.7398727
+## [v0.44.0] - 2026-08-04 — Live verification session + game update to 4.1.1.7398727
 
 **Category:** Verification / Truth pass | **Evidence:** docs/parity-100/LIVE-VERIFICATION-2026-08-04.md
 
@@ -231,7 +287,7 @@ Each entry includes:
   runtime version/UUID gate fails closed until offsets are re-migrated
   (metathesis plan, `docs/plans/2026-05-13-003`).
 
-## [Unreleased] - 2026-08-02 — Wave 7 Phase 1 (E2.0–E2.2): dual-VM state ownership
+## [v0.44.0] - 2026-08-02 — Wave 7 Phase 1 (E2.0–E2.2): dual-VM state ownership
 
 **Category:** Architecture / Dual-VM foundation | **Plan:** docs/plans/2026-08-01-001-feat-wave-7-terminal-parity-plan.md
 

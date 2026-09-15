@@ -51,16 +51,16 @@ Comprehensive reference for the BG3SE-macOS test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total tests** | 722 (498 offline + 224 Lua) |
-| **Tier 0 (C unit)** | 137 — native binary, no game, CI-safe |
-| **Tier H (pytest)** | 361 — Python harness, no game, CI-safe |
+| **Total tests** | 737 (509 offline + 228 Lua) |
+| **Tier 0 (C unit)** | 141 — native binary, no game, CI-safe |
+| **Tier H (pytest)** | 368 — Python harness, no game, CI-safe |
 | **Tier 1 (General)** | 114 — Lua, run anytime, no save needed |
-| **Tier 2 (In-Game)** | 110 — Lua, require loaded save |
+| **Tier 2 (In-Game)** | 114 — Lua, require loaded save |
 | **CI pipeline** | `.github/workflows/test-offline.yml` (Tier 0 + Tier H) |
 
 ### Tier 0: Native C Unit Tests
 
-137 tests in `tests/tier0/`. Built as standalone binary `bg3se_test_tier0` via CMake.
+141 tests in `tests/tier0/`. Built as standalone binary `bg3se_test_tier0` via CMake.
 Tests memory-safety-critical C code without any game process.
 
 ```bash
@@ -78,7 +78,7 @@ cd build && cmake --build . --target bg3se_test_tier0 && ./bin/bg3se_test_tier0
 
 ### Tier H: Python Harness Tests
 
-361 tests in `tests/harness/`. Run with pytest, no game dependency.
+368 tests in `tests/harness/`. Run with pytest, no game dependency.
 
 ```bash
 PYTHONPATH=tools pytest tests/harness/ -v
@@ -157,7 +157,7 @@ echo '!test_ingame Osi' | nc -U /tmp/bg3se.sock
 
 ### Tier 2: In-Game Tests
 
-110 tests requiring a loaded save (entity access, Osiris queries, physics, pathfinding, and parity contracts).
+114 tests requiring a loaded save (entity access, Osiris queries, physics, pathfinding, StaticData layouts, and parity contracts).
 
 | Category | Count | What it Tests |
 |----------|-------|---------------|

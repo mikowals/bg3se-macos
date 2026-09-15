@@ -8,6 +8,8 @@ Build, deployment, launch, and reverse engineering scripts.
 | `build.sh` | Build the project |
 | `rebuild.sh` | Clean rebuild |
 | `deploy.sh` | Deploy dylib to Steam folder (called by CMake POST_BUILD) |
+| `release/package.sh` | Build the GitHub release zip (universal dylib + insert_dylib_bin + install.sh + README.txt) into `build/release/`; refuses a non-universal or version-mismatched dylib |
+| `release/install.sh` | Standalone installer shipped inside the zip: copies the dylib, backs up and patches the game binary with insert_dylib, ad-hoc re-signs; `--uninstall` restores |
 
 ## Launch
 | Script | Description |
