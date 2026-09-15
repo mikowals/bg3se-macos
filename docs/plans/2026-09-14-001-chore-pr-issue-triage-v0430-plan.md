@@ -1,7 +1,7 @@
 ---
 title: "chore: PR merge + issue resolution plan vs v0.43.0 (main 01b6b91)"
 type: chore
-status: active
+status: completed
 date: 2026-09-14
 ---
 
