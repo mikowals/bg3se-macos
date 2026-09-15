@@ -13,6 +13,52 @@ Each entry includes:
 
 ---
 
+## [Unreleased] - 2026-09-14 — PR integration pass: five silent-wrong-value fixes, tier-0 hardening
+
+**Category:** Correctness / Tests | **Plan:** docs/plans/2026-09-14-001-chore-pr-issue-triage-v0430-plan.md | **PRs:** #101, #103 (@mikowals)
+
+### Fixed
+
+- **PersistentVars saved as `null`** (`src/lua/lua_persistentvars.c`) — the
+  table index was taken with `lua_gettop()` after `luaL_buffinit()`, which
+  pushes a placeholder in Lua 5.4, so the serializer received the placeholder.
+  Every mod's saved variables were written as four bytes. (#101, @mikowals)
+- **`Ext.Enums.X[n]` always nil** (`src/enum/enum_ext.c`) — `lua_isstring()`
+  swallowed integer keys before the integer branch ran. (#101, @mikowals)
+  Extended to the same ordering in `enum_lua.c` (`__eq`) and `bitfield_lua.c`
+  (bitwise operands): `AttributeFlags[0x2] | 0x4` now works, `'4'` is still
+  rejected.
+- **ARM64 safe hook installed at target+4** (`src/hooks/arm64_decode.c`) —
+  `arm64_analyze_prologue()` prefers offset 0 when the 16-byte entry window has
+  no PC-relative instruction; a later `bl` no longer pushes the hook past the
+  frame push. The live consumer whose offset moves is the `GetFreeMessage` net
+  hook. (#101, @mikowals)
+- **Osiris wrappers discarded x0** (`src/injector/main.c`,
+  `src/osiris/osiris_types.h`) — `fake_InitGame` and `fake_Event` return
+  `uint64_t` and forward the original's result; a void wrapper let trailing
+  code decide the engine's story-init status. (#101, @mikowals)
+- **`Ext.Json.Stringify(proxy)` returned `"null"`** (`src/lua/lua_json.c`) —
+  userdata with `__pairs` (component and entity proxies) now serializes in
+  place as an object through the existing depth cap (200). Reworked from the
+  #101 materialize pre-pass, which cloned every table and capped at depth 32.
+  New active-path cycle guard: `t.self = t` emits `{"self":null}`, and a
+  branching cycle no longer expands exponentially. A raising `__pairs` is
+  logged and yields `null` for that node without aborting the call. `_D()`
+  dumps proxies through the same path.
+
+### Changed
+
+- **Tier 0: 68 → 105 tests.** #103 adds 23 mutation-hardening cases
+  (safe_memory, mod_paths, pattern_scan, entity_events); #101 adds 22 across
+  five new suites; the integration pass adds 15 (JSON cycles/depth/fail-soft,
+  enum operands). PersistentVars fixture is hermetic (HOME restored, no
+  `system()`).
+
+### Documentation
+
+- Codex review reports for #91, #101, #103 and the issue triage under
+  `docs/reviews/2026-09-14-codex/`. Draft maintainer comments alongside.
+
 ## [Unreleased] - 2026-08-04 (later) — Offset re-migration to 4.1.1.7398727 (offline complete)
 
 **Category:** Migration / RE | **Plan:** docs/plans/2026-08-04-001-feat-offset-remigration-7398727-plan.md

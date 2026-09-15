@@ -1,0 +1,3 @@
+MCM works on main: the v0.41 compat baseline passes 27/27 assertions—viewport state, events, listeners, PersistentVars, Tick, `DB_Players` (`docs/compat-reports/baseline/mcm.json`). Two setup notes: put it first in the load order, and on keyboards without a usable `INSERT`, rebind the toggle to F10 in its settings JSON. Whether a mod manager lists it has nothing to do with extender compatibility.
+
+I am rerunning the scenario after #101 lands, since that PR fixes PersistentVars serialization (saved as `null` today), and will close this against v0.44.0 with the fresh report. The wrong Nexus id in `docs/supported-mods.md` (8901 for 9162) lands fixed in the same pass.
