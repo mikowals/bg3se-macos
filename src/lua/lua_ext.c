@@ -2214,6 +2214,60 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  assert(#t > 0, 'Expected non-empty types list')\n"
         "end)\n";
 
+    // Tier 2: StaticData typed layouts (#100) + canonical GUID text
+    static const char *console_cmd_test_staticdata_layout =
+        "BG3SE_AddTest(2, 'StaticData.GuidCanonical', function()\n"
+        "  -- Human race GUID as written in Races.lsx; pair-swapped text must not match\n"
+        "  local human = Ext.StaticData.Get('Race', '0eb594cb-8820-4be6-a58d-8be7a1a98fba')\n"
+        "  assert(human ~= nil, 'canonical Human race GUID must resolve')\n"
+        "  AssertEquals(human.Name, 'Human', 'Race name for the Human GUID')\n"
+        "  AssertEquals(human.ResourceUUID, '0eb594cb-8820-4be6-a58d-8be7a1a98fba', 'ResourceUUID text')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'StaticData.CCAppearanceVisual.Count', function()\n"
+        "  assert(Ext.StaticData.IsReady('CharacterCreationAppearanceVisual'), 'manager captured')\n"
+        "  local n = Ext.StaticData.GetCount('CharacterCreationAppearanceVisual')\n"
+        "  assert(n > 0, 'expected appearance visuals, got ' .. tostring(n))\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'StaticData.CCAppearanceVisual.Fields', function()\n"
+        "  local all = Ext.StaticData.GetAll('CharacterCreationAppearanceVisual')\n"
+        "  assert(#all > 0, 'GetAll returned no entries')\n"
+        "  local e\n"
+        "  for _, cand in ipairs(all) do\n"
+        "    if cand.RaceUUID and cand.RaceUUID ~= '00000000-0000-0000-0000-000000000000' then e = cand break end\n"
+        "  end\n"
+        "  assert(e, 'no entry with a RaceUUID')\n"
+        "  AssertGUID(e.ResourceUUID, 'ResourceUUID')\n"
+        "  AssertGUID(e.VisualResource, 'VisualResource')\n"
+        "  AssertType(e.SlotName, 'string', 'SlotName')\n"
+        "  assert(#e.SlotName > 0, 'SlotName should resolve to text')\n"
+        "  AssertType(e.BodyType, 'number', 'BodyType')\n"
+        "  AssertType(e.BodyShape, 'number', 'BodyShape')\n"
+        "  AssertType(e.DisplayName, 'table', 'DisplayName')\n"
+        "  AssertType(e.DisplayName.Handle.Handle, 'string', 'DisplayName.Handle.Handle')\n"
+        "  AssertType(e.Tags, 'table', 'Tags')\n"
+        "  local race = Ext.StaticData.Get('Race', e.RaceUUID)\n"
+        "  assert(race ~= nil, 'RaceUUID should resolve to a Race: ' .. e.RaceUUID)\n"
+        "  local again = Ext.StaticData.Get('CharacterCreationAppearanceVisual', e.ResourceUUID)\n"
+        "  assert(again and again.ResourceUUID == e.ResourceUUID, 'Get(type, ResourceUUID) round trip')\n"
+        "end)\n"
+        "BG3SE_AddTest(2, 'StaticData.AllTypesPopulated', function()\n"
+        "  -- Every bank resolves and every entry is a real resource: a wrong stride\n"
+        "  -- produces nil/non-v4 GUIDs from the second entry onward (7398727 live).\n"
+        "  for _, t in ipairs(Ext.StaticData.GetTypes()) do\n"
+        "    local n = Ext.StaticData.GetCount(t)\n"
+        "    assert(n > 0, t .. ': expected entries, got ' .. tostring(n))\n"
+        "    local all = Ext.StaticData.GetAll(t)\n"
+        "    AssertEquals(#all, n, t .. ' GetAll length')\n"
+        "    local v4 = 0\n"
+        "    for _, e in ipairs(all) do\n"
+        "      AssertGUID(e.ResourceUUID, t .. ' ResourceUUID')\n"
+        "      assert(e.ResourceUUID ~= '00000000-0000-0000-0000-000000000000', t .. ' nil GUID')\n"
+        "      if e.ResourceUUID:sub(15, 15) == '4' then v4 = v4 + 1 end\n"
+        "    end\n"
+        "    assert(v4 * 100 >= n * 99, t .. ': only ' .. v4 .. '/' .. n .. ' entries carry a v4 GUID (stride?)')\n"
+        "  end\n"
+        "end)\n";
+
     // Tier 2: Osiris Dispatch (8 tests — targets Issue #66)
     static const char *console_cmd_test_osiris =
         "BG3SE_AddTest(2, 'Osi.GetHostCharacter', function()\n"
@@ -3402,6 +3456,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         console_cmd_test_misc, console_cmd_test_mcm, console_cmd_test_register,
         // In-game tests
         console_cmd_test_ingame, console_cmd_test_ingame2,
+        console_cmd_test_staticdata_layout,
         console_cmd_test_osiris, console_cmd_test_osiris_edge,
         console_cmd_test_entity_events,
         console_cmd_test_wave2_components,

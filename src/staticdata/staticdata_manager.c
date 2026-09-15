@@ -11,6 +11,8 @@
 #include "../core/offset_table.h"
 #include "../strings/fixed_string.h"
 #include "../hooks/arm64_hook.h"
+#include "../entity/guid_lookup.h"
+#include "staticdata_layouts.h"
 #include <dobby.h>
 #include <string.h>
 #include <stdio.h>
@@ -41,39 +43,44 @@
 // The key difference: TypeContext Values.buf_ is an array of POINTERS,
 // while Session FeatManager has a flat array of structs.
 //
-#define FEATMANAGER_REAL_COUNT_OFFSET    0x7C   // Real FeatManager count offset
-#define FEATMANAGER_REAL_ARRAY_OFFSET    0x80   // Real FeatManager array offset
-#define FEATMANAGER_META_COUNT_OFFSET    0x7C   // TypeContext HashMap Keys.size_ offset
-#define FEATMANAGER_META_VALUES_OFFSET   0x80   // TypeContext HashMap Values.buf_ offset (pointer array)
+#define FEATMANAGER_REAL_COUNT_OFFSET    0x7C   // GuidResourceBank<T>::Resources.Keys.size
+#define FEATMANAGER_REAL_ARRAY_OFFSET    0x80   // GuidResourceBank<T>::Resources.Values.buf (flat T[])
 
 // Structure offsets (verified via Windows BG3SE GuidResources.h)
 // Base class GuidResource: VMT (8) + ResourceUUID (16) = 24 bytes (0x18)
 // Then type-specific fields follow
 
+// Entry strides are sizeof(T) for the bank's flat Values array. Every value
+// below marked "live" was measured on 4.1.1.7398727 (2026-09-15) by walking
+// the array for the next repeat of the entry vtable pointer; the runtime
+// re-measures on first use and overrides a stale constant (see
+// effective_entry_size), so a game update degrades to a logged warning, not
+// to garbage entries.
+
 // Feat structure
-#define FEAT_SIZE                     0x128  // 296 bytes per feat
+#define FEAT_SIZE                     0x128  // 296 bytes per feat (Ghidra + live)
 #define FEAT_OFFSET_NAME              0x18   // FixedString Name (after GuidResource base)
 
 // Race structure
-#define RACE_SIZE                     0x200  // Estimate - has many arrays
+#define RACE_SIZE                     0x168  // 360 bytes (live; was a 0x200 estimate)
 #define RACE_OFFSET_NAME              0x18   // FixedString Name (same as Feat)
 
 // Origin structure
 // Has uint8_t AvailableInCharacterCreation at +0x18 before Name
-#define ORIGIN_SIZE                   0x180  // Estimate
+#define ORIGIN_SIZE                   0x180  // Estimate (re-measured at runtime)
 #define ORIGIN_OFFSET_NAME            0x1C   // FixedString Name (aligned after uint8_t)
 
 // Background structure - NO Name field, only DisplayName (TranslatedString)
-#define BACKGROUND_SIZE               0x80   // Estimate
+#define BACKGROUND_SIZE               0x70   // 112 bytes (live; was a 0x80 estimate)
 #define BACKGROUND_OFFSET_NAME        0      // No FixedString Name field!
 
 // God structure
-#define GOD_SIZE                      0x60   // Small structure
+#define GOD_SIZE                      0x60   // 96 bytes (live)
 #define GOD_OFFSET_NAME               0x18   // FixedString Name
 
 // ClassDescription structure
 // Has Guid ParentGuid (16 bytes) at +0x18 before Name
-#define CLASS_SIZE                    0x100  // Estimate
+#define CLASS_SIZE                    0x110  // 272 bytes (live; was a 0x100 estimate)
 #define CLASS_OFFSET_NAME             0x28   // FixedString Name (after ParentGuid)
 
 // ============================================================================
@@ -101,12 +108,14 @@ static const ManagerConfig g_manager_configs[STATICDATA_COUNT] = {
     { 0x7C, 0x80, GOD_SIZE, GOD_OFFSET_NAME, "/tmp/bg3se_godmanager.txt" },
     // STATICDATA_CLASS
     { 0x7C, 0x80, CLASS_SIZE, CLASS_OFFSET_NAME, "/tmp/bg3se_classmanager.txt" },
-    // STATICDATA_PROGRESSION
+    // STATICDATA_PROGRESSION (estimate, re-measured at runtime)
     { 0x7C, 0x80, 0x200, 0x18, "/tmp/bg3se_progressionmanager.txt" },
-    // STATICDATA_ACTIONRESOURCE
-    { 0x7C, 0x80, 0x80, 0x18, "/tmp/bg3se_actionresourcemanager.txt" },
-    // STATICDATA_FEATDESCRIPTION
-    { 0x7C, 0x80, 0x80, 0, "/tmp/bg3se_featdescmanager.txt" },  // Has TranslatedString, not FixedString
+    // STATICDATA_ACTIONRESOURCE (0x60 live; was a 0x80 estimate)
+    { 0x7C, 0x80, 0x60, 0x18, "/tmp/bg3se_actionresourcemanager.txt" },
+    // STATICDATA_FEATDESCRIPTION (0x60 live; was a 0x80 estimate)
+    { 0x7C, 0x80, 0x60, 0, "/tmp/bg3se_featdescmanager.txt" },  // Has TranslatedString, not FixedString
+    // STATICDATA_CC_APPEARANCE_VISUAL (#100) — no Name; typed fields in staticdata_layouts.c
+    { 0x7C, 0x80, 0xA8, 0, "/tmp/bg3se_ccappearancevisualmanager.txt" },
 };
 
 // ============================================================================
@@ -122,7 +131,8 @@ static const char* s_type_names[STATICDATA_COUNT] = {
     "Class",
     "Progression",
     "ActionResource",
-    "FeatDescription"
+    "FeatDescription",
+    "CharacterCreationAppearanceVisual"
 };
 
 // Manager type names as they appear in TypeContext (for name-based capture)
@@ -136,7 +146,8 @@ static const char* s_manager_type_names[STATICDATA_COUNT] = {
     "eoc::ClassDescriptions",           // Was ClassManager - corrected per GuidResources.h
     "eoc::ProgressionManager",
     "eoc::ActionResourceTypes",         // Was ActionResourceManager - corrected per GuidResources.h
-    "eoc::FeatDescriptionManager"
+    "eoc::FeatDescriptionManager",
+    "eoc::CharacterCreationAppearanceVisualManager"
 };
 
 // ============================================================================
@@ -147,11 +158,16 @@ static struct {
     bool initialized;
     void* main_binary_base;
 
-    // Captured manager pointers (from TypeContext - metadata structures)
+    // TypeContext slots: the address of ls::TypeId<Manager, ImmutableDataHeadmaster>::
+    // m_TypeIndex for each type (an int32 in the game image). Never a bank;
+    // used only to resolve the bank through the headmaster hash table.
     void* managers[STATICDATA_COUNT];
 
-    // Real manager pointers (probed from metadata or captured via hooks)
+    // Real GuidResourceBank<T> pointers (hash lookup, Get<T> hooks, Frida)
     void* real_managers[STATICDATA_COUNT];
+
+    // sizeof(T) measured from the live Values array (0 = not measured yet)
+    int entry_stride[STATICDATA_COUNT];
 
     // Original function pointers (for hooks)
     void* orig_feat_getfeats;
@@ -159,6 +175,8 @@ static struct {
     // ARM64 safe hook handles
     ARM64HookHandle* feat_getfeats_hook;
 } g_staticdata = {0};
+
+static int effective_entry_size(StaticDataType type, void* bank);
 
 // ============================================================================
 // TypeContext Traversal (Alternative capture method)
@@ -174,154 +192,6 @@ typedef struct TypeInfo {
     uint32_t padding;         // +0x14: Padding
     struct TypeInfo* next;    // +0x18: Next TypeInfo in list
 } TypeInfo;
-
-// ============================================================================
-// Real Manager Discovery (Probing)
-// ============================================================================
-
-/**
- * Check if a pointer looks like a valid manager for a given type.
- * Uses ManagerConfig to validate using type-specific offsets.
- * Valid manager has:
- *   - count at count_offset: reasonable value (1-10000)
- *   - array at array_offset: non-null pointer to heap
- * Uses safe memory reads to prevent crashes.
- */
-static bool looks_like_real_manager(StaticDataType type, void* ptr) {
-    if (!ptr || type < 0 || type >= STATICDATA_COUNT) return false;
-
-    const ManagerConfig* config = &g_manager_configs[type];
-
-    // Safely read count at type's count_offset
-    int32_t count = 0;
-    if (!safe_memory_read_i32((mach_vm_address_t)ptr + config->count_offset, &count)) {
-        return false;  // Memory not readable
-    }
-
-    // Count should be reasonable (allow 1-10000 for all types)
-    if (count <= 0 || count > 10000) return false;
-
-    // Safely read array pointer at type's array_offset
-    void* array = NULL;
-    if (!safe_memory_read_pointer((mach_vm_address_t)ptr + config->array_offset, &array)) {
-        return false;  // Memory not readable
-    }
-
-    // Array pointer should be non-null and look like a heap address
-    if (!array) return false;
-    uintptr_t arr_addr = (uintptr_t)array;
-
-    // Heap addresses on macOS are typically > 0x600000000000
-    // But code pointers are ~0x100000000
-    // Allow anything that's not obviously wrong
-    if (arr_addr < 0x100000000ULL) return false;
-
-    return true;
-}
-
-/**
- * Legacy wrapper for Feat-specific validation.
- */
-static bool looks_like_real_feat_manager(void* ptr) {
-    return looks_like_real_manager(STATICDATA_FEAT, ptr);
-}
-
-/**
- * Try to find the real manager by probing the TypeContext metadata structure.
- * The metadata might contain a pointer to the real manager.
- * Uses safe memory reads to prevent crashes.
- *
- * @param type Static data type
- * @param metadata Metadata pointer from TypeContext
- * @return Pointer to real manager, or NULL if not found
- */
-static void* probe_for_real_manager(StaticDataType type, void* metadata) {
-    if (!metadata || type < 0 || type >= STATICDATA_COUNT) return NULL;
-
-    const ManagerConfig* config = &g_manager_configs[type];
-    const char* type_name = s_type_names[type];
-
-    log_message("[StaticData] Probing metadata %p for real %s manager...", metadata, type_name);
-
-    // First check: is the metadata itself the real manager?
-    if (looks_like_real_manager(type, metadata)) {
-        int32_t count = 0;
-        safe_memory_read_i32((mach_vm_address_t)metadata + config->count_offset, &count);
-        log_message("[StaticData] Metadata IS the real %s manager (count@+0x%x=%d)",
-                    type_name, config->count_offset, count);
-        return metadata;
-    }
-
-    // Safely read metadata count at +0x00
-    int32_t meta_count = 0;
-    if (safe_memory_read_i32((mach_vm_address_t)metadata + FEATMANAGER_META_COUNT_OFFSET, &meta_count)) {
-        log_message("[StaticData] Metadata count@+0x00=%d", meta_count);
-    }
-
-    // Probe for pointers at various offsets that could point to real manager
-    // Extended range: 0x08 through 0x100 in steps of 8
-    int offsets_to_probe[] = {
-        0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40,
-        0x48, 0x50, 0x58, 0x60, 0x68, 0x70, 0x78, 0x80,
-        0x88, 0x90, 0x98, 0xA0, 0xA8, 0xB0, 0xB8, 0xC0,
-        0xC8, 0xD0, 0xD8, 0xE0, 0xE8, 0xF0, 0xF8, 0x100
-    };
-    int num_offsets = sizeof(offsets_to_probe) / sizeof(offsets_to_probe[0]);
-
-    // For Feat type, dump all pointer candidates for debugging
-    if (type == STATICDATA_FEAT) {
-        log_message("[StaticData] Dumping Feat metadata structure at %p:", metadata);
-        for (int i = 0; i < num_offsets; i++) {
-            int offset = offsets_to_probe[i];
-            void* ptr = NULL;
-            if (safe_memory_read_pointer((mach_vm_address_t)metadata + offset, &ptr)) {
-                // Check if this looks like a valid heap pointer
-                if (ptr && (uintptr_t)ptr > 0x100000000ULL && (uintptr_t)ptr < 0x800000000000ULL) {
-                    // Try to read count at +0x7C from this candidate
-                    int32_t maybe_count = 0;
-                    void* maybe_array = NULL;
-                    if (safe_memory_read_i32((mach_vm_address_t)ptr + 0x7C, &maybe_count) &&
-                        safe_memory_read_pointer((mach_vm_address_t)ptr + 0x80, &maybe_array)) {
-                        log_message("[StaticData]   +0x%02X: %p -> count@+0x7C=%d, array@+0x80=%p",
-                                    offset, ptr, maybe_count, maybe_array);
-                    } else {
-                        log_message("[StaticData]   +0x%02X: %p (can't read +0x7C/+0x80)", offset, ptr);
-                    }
-                }
-            }
-        }
-    }
-
-    for (int i = 0; i < num_offsets; i++) {
-        int offset = offsets_to_probe[i];
-        void* candidate = NULL;
-
-        // Safely read the candidate pointer
-        if (!safe_memory_read_pointer((mach_vm_address_t)metadata + offset, &candidate)) {
-            continue;  // Memory not readable at this offset
-        }
-
-        if (candidate && looks_like_real_manager(type, candidate)) {
-            int32_t count = 0;
-            void* array = NULL;
-            safe_memory_read_i32((mach_vm_address_t)candidate + config->count_offset, &count);
-            safe_memory_read_pointer((mach_vm_address_t)candidate + config->array_offset, &array);
-            log_message("[StaticData] FOUND real %s manager at metadata+0x%02X: %p (count=%d, array=%p)",
-                        type_name, offset, candidate, count, array);
-            return candidate;
-        }
-    }
-
-    log_message("[StaticData] Could not find real %s manager from metadata", type_name);
-    return NULL;
-}
-
-/**
- * Legacy wrapper for Feat-specific probing.
- */
-static void* probe_for_real_feat_manager(void* metadata) {
-    return probe_for_real_manager(STATICDATA_FEAT, metadata);
-}
 
 /**
  * Capture all known managers by traversing the ImmutableDataHeadmaster TypeContext.
@@ -394,19 +264,11 @@ static int capture_managers_via_typecontext(void) {
                         log_message("[StaticData] *** MATCHED *** %s = %s @ %p",
                                     s_type_names[i], s_manager_type_names[i], manager_ptr);
 
-                        // NOTE: We do NOT probe for real managers anymore.
-                        // Dec 20, 2025 discovery: TypeContext metadata IS a GuidResourceBank
-                        // with HashMap. The metadata itself has:
-                        //   +0x7C: Keys.size_ (entry count)
-                        //   +0x80: Values.buf_ (pointer array to entries)
-                        //
-                        // The previous probe_for_real_manager() incorrectly found a
-                        // structure at metadata+0xC0 with count=1, causing GetAll to
-                        // return only 1 item instead of 37.
-                        //
-                        // real_managers[] is now only set by hooks (GetFeats hook during
-                        // character creation), which capture the Session FeatManager with
-                        // flat array structure.
+                        // manager_ptr is the type's m_TypeIndex global (2026-09-15,
+                        // 7398727: eoc::FeatManager slot == unslid 0x108927c30, the
+                        // nm address of ls::TypeId<eoc::FeatManager,
+                        // ImmutableDataHeadmaster>::m_TypeIndex). The bank itself is
+                        // resolved from that index by capture_bank_via_hash_lookup().
 
                         captured++;
                         break;
@@ -519,11 +381,11 @@ static GetAllFeats_t g_orig_GetAllFeats = NULL;
 static void hook_GetAllFeats(void* environment) {
     log_message("[StaticData] GetAllFeats called with env=%p", environment);
 
-    // Try to capture FeatManager from environment + 0x130
-    if (environment && !g_staticdata.managers[STATICDATA_FEAT]) {
+    // Try to capture the real FeatManager from environment + 0x130
+    if (environment && !g_staticdata.real_managers[STATICDATA_FEAT]) {
         void* feat_manager = *(void**)((uint8_t*)environment + 0x130);
         if (feat_manager) {
-            g_staticdata.managers[STATICDATA_FEAT] = feat_manager;
+            g_staticdata.real_managers[STATICDATA_FEAT] = feat_manager;
             log_message("[StaticData] Captured FeatManager from env+0x130: %p", feat_manager);
 
             // Log structure info
@@ -898,14 +760,47 @@ static void* lookup_manager_by_type_index(int32_t type_index) {
 }
 
 /**
- * Force capture managers that don't have Get<T> hooks by using hash lookup.
- * This works for Race, God, FeatDescription which don't have templated Get functions.
+ * Resolve one type's GuidResourceBank through the ImmutableDataHeadmaster
+ * hash table, keyed by the m_TypeIndex the TypeContext slot points at.
  *
- * Prerequisites:
- *   - ImmutableDataHeadmaster must be captured (via any Get<T> hook)
- *   - TypeContext must be captured (provides type indices)
+ * @return true if the bank is (now) captured
+ */
+static bool capture_bank_via_hash_lookup(StaticDataType type) {
+    if (type < 0 || type >= STATICDATA_COUNT) return false;
+    if (g_staticdata.real_managers[type]) return true;
+    if (!g_immutable_data_headmaster) return false;
+
+    void* slot_ptr = g_staticdata.managers[type];
+    if (!slot_ptr) return false;
+
+    int32_t type_index = 0;
+    if (!safe_memory_read_i32((mach_vm_address_t)slot_ptr, &type_index)) {
+        log_message("[StaticData] Hash lookup: cannot read type_index for %s at %p",
+                    s_type_names[type], slot_ptr);
+        return false;
+    }
+
+    void* bank = lookup_manager_by_type_index(type_index);
+    if (!bank) {
+        log_message("[StaticData] Hash lookup: %s (type_index=%d) not in the headmaster table",
+                    s_type_names[type], type_index);
+        return false;
+    }
+
+    g_staticdata.real_managers[type] = bank;
+    int32_t count = 0;
+    safe_memory_read_i32((mach_vm_address_t)bank + FEATMANAGER_REAL_COUNT_OFFSET, &count);
+    log_message("[StaticData] Hash lookup captured %s: %p (type_index=%d, count=%d, stride=0x%x)",
+                s_type_names[type], bank, type_index, count, effective_entry_size(type, bank));
+    return true;
+}
+
+/**
+ * Resolve every bank that is not captured yet. Runs at post-init and on demand;
+ * needs the ImmutableDataHeadmaster (captured by any Get<T> hook) and the
+ * TypeContext slots.
  *
- * @return Number of managers newly captured via hash lookup
+ * @return Number of banks newly captured
  */
 int staticdata_hash_lookup_capture(void) {
     if (!g_immutable_data_headmaster) {
@@ -913,58 +808,22 @@ int staticdata_hash_lookup_capture(void) {
         return 0;
     }
 
-    int captured = 0;
-    log_message("[StaticData] Attempting hash lookup capture for remaining types...");
-
-    // Types without Get<T> hooks: Race, God, FeatDescription, (Feat if hook didn't fire)
-    StaticDataType hash_types[] = {
-        STATICDATA_RACE,
-        STATICDATA_GOD,
-        STATICDATA_FEAT_DESCRIPTION,
-        STATICDATA_FEAT  // Also try Feat in case hook didn't fire
-    };
-
-    for (int i = 0; i < sizeof(hash_types)/sizeof(hash_types[0]); i++) {
-        StaticDataType type = hash_types[i];
-
-        // Skip if already captured
-        if (g_staticdata.real_managers[type]) {
-            continue;
-        }
-
-        // Need TypeContext metadata to get type index
-        void* slot_ptr = g_staticdata.managers[type];
-        if (!slot_ptr) {
-            log_message("[StaticData] Hash lookup: no TypeContext for %s", s_type_names[type]);
-            continue;
-        }
-
-        // Read type index from slot_ptr+0x00
-        int32_t type_index = 0;
-        if (!safe_memory_read_i32((mach_vm_address_t)slot_ptr, &type_index)) {
-            log_message("[StaticData] Hash lookup: failed to read type_index for %s", s_type_names[type]);
-            continue;
-        }
-
-        log_message("[StaticData] Hash lookup: %s has type_index=%d", s_type_names[type], type_index);
-
-        // Look up in hash table
-        void* manager = lookup_manager_by_type_index(type_index);
-        if (manager) {
-            g_staticdata.real_managers[type] = manager;
-
-            // Verify structure
-            int32_t count = 0;
-            safe_memory_read_i32((mach_vm_address_t)manager + 0x7C, &count);
-            log_message("[StaticData] Hash lookup captured %s: %p (count=%d)",
-                        s_type_names[type], manager, count);
-            captured++;
-        } else {
-            log_message("[StaticData] Hash lookup: %s not found in hash table", s_type_names[type]);
-        }
+    bool need_slots = false;
+    for (int i = 0; i < STATICDATA_COUNT; i++) {
+        if (!g_staticdata.real_managers[i] && !g_staticdata.managers[i]) need_slots = true;
+    }
+    if (need_slots && g_staticdata.initialized) {
+        capture_managers_via_typecontext();
     }
 
-    log_message("[StaticData] Hash lookup complete: %d managers newly captured", captured);
+    int captured = 0;
+    for (int i = 0; i < STATICDATA_COUNT; i++) {
+        StaticDataType type = (StaticDataType)i;
+        if (g_staticdata.real_managers[type]) continue;
+        if (capture_bank_via_hash_lookup(type)) captured++;
+    }
+
+    log_message("[StaticData] Hash lookup complete: %d banks newly captured", captured);
     return captured;
 }
 
@@ -1103,9 +962,9 @@ bool staticdata_manager_ready(void) {
         return false;
     }
 
-    // Check if at least one manager is captured
+    // Ready once at least one bank resolves to real entries
     for (int i = 0; i < STATICDATA_COUNT; i++) {
-        if (g_staticdata.managers[i]) {
+        if (g_staticdata.real_managers[i]) {
             return true;
         }
     }
@@ -1141,19 +1000,22 @@ bool staticdata_has_manager(StaticDataType type) {
         return false;
     }
 
-    // If not captured yet, try TypeContext capture (lazy initialization)
+    // Lazy: resolve the TypeContext slot, then the bank behind it
     if (!g_staticdata.managers[type] && g_staticdata.initialized) {
         capture_managers_via_typecontext();
     }
+    if (!g_staticdata.real_managers[type]) {
+        capture_bank_via_hash_lookup(type);
+    }
 
-    return g_staticdata.managers[type] != NULL;
+    return g_staticdata.real_managers[type] != NULL;
 }
 
 void* staticdata_get_manager(StaticDataType type) {
     if (type < 0 || type >= STATICDATA_COUNT) {
         return NULL;
     }
-    return g_staticdata.managers[type];
+    return g_staticdata.real_managers[type];
 }
 
 bool staticdata_capture_manager(StaticDataType type) {
@@ -1164,10 +1026,6 @@ bool staticdata_capture_manager(StaticDataType type) {
     if (!g_staticdata.managers[type] && g_staticdata.initialized) {
         capture_managers_via_typecontext();
     }
-
-    // NOTE: We no longer probe for real managers.
-    // Dec 20, 2025: TypeContext metadata IS a GuidResourceBank with HashMap.
-    // Use managers[type] directly with HashMap offsets (+0x7C count, +0x80 values).
 
     return staticdata_has_manager(type);
 }
@@ -1188,17 +1046,13 @@ int staticdata_post_init_capture(void) {
     log_message("[StaticData] Post-init capture starting...");
     int captured = 0;
 
-    // 1. Try TypeContext-based capture for all manager types
+    // 1. Resolve the TypeContext slots (m_TypeIndex globals) for every type
     int tc_captured = capture_managers_via_typecontext();
-    log_message("[StaticData] TypeContext captured %d managers", tc_captured);
+    log_message("[StaticData] TypeContext resolved %d slots", tc_captured);
 
-    // 2. NOTE: We no longer probe for real managers from metadata.
-    // Dec 20, 2025: TypeContext metadata IS a GuidResourceBank with HashMap.
-    // The metadata at managers[i] can be used directly with:
-    //   +0x7C = entry count (Keys.size_)
-    //   +0x80 = pointer array (Values.buf_)
-    //
-    // real_managers[] is only set by hooks (e.g., GetFeats during character creation).
+    // 2. Resolve the banks behind those slots through the headmaster hash table
+    int hl_captured = staticdata_hash_lookup_capture();
+    log_message("[StaticData] Hash lookup resolved %d banks", hl_captured);
 
     // 3. Load any existing Frida captures as fallback
     for (int i = 0; i < STATICDATA_COUNT; i++) {
@@ -1211,9 +1065,9 @@ int staticdata_post_init_capture(void) {
         }
     }
 
-    // Count total captured managers (either metadata or real)
+    // Count banks with real entries
     for (int i = 0; i < STATICDATA_COUNT; i++) {
-        if (g_staticdata.managers[i] || g_staticdata.real_managers[i]) {
+        if (g_staticdata.real_managers[i]) {
             captured++;
         }
     }
@@ -1225,377 +1079,167 @@ int staticdata_post_init_capture(void) {
 }
 
 // ============================================================================
-// Data Access - FeatManager specific
+// Data Access
 // ============================================================================
+//
+// Only a real GuidResourceBank<T> is dereferenced for entries:
+//   +0x7C  Resources.Keys.size   live entry count
+//   +0x80  Resources.Values.buf  flat T[] with stride sizeof(T)
+// (GuidResourceBankBase is 0x50 bytes: vtable, two FixedStrings, and the
+// ResourceGuidsByMod HashMap; HashMap<Guid, T> Resources follows at +0x50 with
+// Keys at +0x70 and Values at +0x80.)
+
+static bool read_bank_array(void* bank, int32_t* out_count, void** out_array) {
+    if (!bank) return false;
+    if (!safe_memory_read_i32((mach_vm_address_t)bank + FEATMANAGER_REAL_COUNT_OFFSET, out_count) ||
+        !safe_memory_read_pointer((mach_vm_address_t)bank + FEATMANAGER_REAL_ARRAY_OFFSET, out_array)) {
+        return false;
+    }
+    return *out_array != NULL && *out_count >= 0;
+}
 
 /**
- * Get the effective FeatManager pointer and determine which offsets to use.
- * Prefers real_managers (has real data) over managers (metadata only).
+ * Measure sizeof(T) from the live Values array. Every entry begins with the
+ * same vtable pointer (GuidResource is polymorphic), so the distance to the
+ * next occurrence of entry 0's first word is the stride.
+ *
+ * @return stride in bytes, or 0 when the bank has < 2 entries or no repeat
+ *         appears within 4 KiB
  */
-static void* get_effective_feat_manager(bool* is_real) {
-    // Prefer real manager if available
-    if (g_staticdata.real_managers[STATICDATA_FEAT]) {
-        if (is_real) *is_real = true;
-        return g_staticdata.real_managers[STATICDATA_FEAT];
-    }
-
-    // Fall back to metadata
-    if (g_staticdata.managers[STATICDATA_FEAT]) {
-        if (is_real) *is_real = false;
-        return g_staticdata.managers[STATICDATA_FEAT];
-    }
-
-    return NULL;
-}
-
-static int feat_get_count(void) {
-    bool is_real = false;
-    void* mgr = get_effective_feat_manager(&is_real);
-    if (!mgr) return -1;
-
-    // Both TypeContext HashMap and Session FeatManager have count at +0x7C
-    int offset = is_real ? FEATMANAGER_REAL_COUNT_OFFSET : FEATMANAGER_META_COUNT_OFFSET;
-
+static int detect_entry_stride(void* bank) {
     int32_t count = 0;
-    if (!safe_memory_read_i32((mach_vm_address_t)mgr + offset, &count)) {
-        return -1;
-    }
-    return count;
-}
-
-static void* feat_get_by_index(int index) {
-    bool is_real = false;
-    void* mgr = get_effective_feat_manager(&is_real);
-    if (!mgr) return NULL;
-
-    // Determine offsets based on manager type
-    int count_offset = is_real ? FEATMANAGER_REAL_COUNT_OFFSET : FEATMANAGER_META_COUNT_OFFSET;
-    int array_offset = is_real ? FEATMANAGER_REAL_ARRAY_OFFSET : FEATMANAGER_META_VALUES_OFFSET;
-
-    // Use safe memory reads to prevent crashes
-    int32_t count = 0;
-    if (!safe_memory_read_i32((mach_vm_address_t)mgr + count_offset, &count)) {
-        log_message("[StaticData] Cannot read feat count at %p+0x%x", mgr, count_offset);
-        return NULL;
-    }
-    if (index < 0 || index >= count) return NULL;
-
     void* array = NULL;
-    if (!safe_memory_read_pointer((mach_vm_address_t)mgr + array_offset, &array)) {
-        log_message("[StaticData] Cannot read feat array at %p+0x%x", mgr, array_offset);
-        return NULL;
+    if (!read_bank_array(bank, &count, &array) || count < 2) return 0;
+
+    uint64_t vmt = 0;
+    if (!safe_memory_read_u64((mach_vm_address_t)array, &vmt) || vmt == 0) return 0;
+
+    for (int off = 8; off <= 0x1000; off += 8) {
+        uint64_t word = 0;
+        if (!safe_memory_read_u64((mach_vm_address_t)array + off, &word)) return 0;
+        if (word == vmt) return off;
     }
-    if (!array) return NULL;
-
-    void* entry = NULL;
-
-    if (is_real) {
-        // Session FeatManager: flat array of Feat structs, each FEAT_SIZE bytes
-        entry = (uint8_t*)array + (index * FEAT_SIZE);
-    } else {
-        // TypeContext HashMap: Values.buf_ is array of POINTERS to Feat structs
-        void* entry_ptr = NULL;
-        if (!safe_memory_read_pointer((mach_vm_address_t)array + (index * sizeof(void*)), &entry_ptr)) {
-            log_message("[StaticData] Cannot read feat pointer at index %d (array=%p)", index, array);
-            return NULL;
-        }
-        entry = entry_ptr;
-    }
-
-    if (!entry) return NULL;
-
-    // Verify the entry address is readable before returning
-    int32_t test_read = 0;
-    if (!safe_memory_read_i32((mach_vm_address_t)entry, &test_read)) {
-        log_message("[StaticData] Feat entry %d at %p is not readable (array=%p, is_real=%d)",
-                    index, entry, array, is_real);
-        return NULL;
-    }
-
-    return entry;
+    return 0;
 }
 
-static void* feat_get_by_guid(const StaticDataGuid* guid) {
-    bool is_real = false;
-    void* mgr = get_effective_feat_manager(&is_real);
-    if (!mgr || !guid) return NULL;
-
-    // Determine offsets based on manager type
-    int count_offset = is_real ? FEATMANAGER_REAL_COUNT_OFFSET : FEATMANAGER_META_COUNT_OFFSET;
-    int array_offset = is_real ? FEATMANAGER_REAL_ARRAY_OFFSET : FEATMANAGER_META_VALUES_OFFSET;
-
-    int32_t count = 0;
-    if (!safe_memory_read_i32((mach_vm_address_t)mgr + count_offset, &count)) {
-        return NULL;
-    }
-
-    void* array = NULL;
-    if (!safe_memory_read_pointer((mach_vm_address_t)mgr + array_offset, &array)) {
-        return NULL;
-    }
-    if (!array) return NULL;
-
-    // Linear search through feats comparing GUIDs
-    // GUID is at offset +0x08 in each feat (after VMT pointer)
-    for (int i = 0; i < count; i++) {
-        void* entry = NULL;
-
-        if (is_real) {
-            // Session FeatManager: flat array of structs
-            entry = (uint8_t*)array + (i * FEAT_SIZE);
+/**
+ * Stride used for index arithmetic: the live measurement when the bank holds
+ * at least two entries, otherwise the configured constant. Logged once per
+ * type when the two disagree.
+ */
+static int effective_entry_size(StaticDataType type, void* bank) {
+    if (type < 0 || type >= STATICDATA_COUNT) return 0;
+    if (g_staticdata.entry_stride[type] == 0) {
+        const ManagerConfig* config = &g_manager_configs[type];
+        int detected = detect_entry_stride(bank);
+        if (detected > 0) {
+            if (detected != config->entry_size) {
+                log_message("[StaticData] %s stride is 0x%x on this build (configured 0x%x); using the live value",
+                            s_type_names[type], detected, config->entry_size);
+            }
+            g_staticdata.entry_stride[type] = detected;
         } else {
-            // TypeContext HashMap: pointer array
-            if (!safe_memory_read_pointer((mach_vm_address_t)array + (i * sizeof(void*)), &entry)) {
-                continue;
-            }
-        }
-
-        if (!entry) continue;
-
-        // Read and compare GUID at +0x08
-        uint8_t entry_guid[16];
-        bool readable = true;
-        for (int j = 0; j < 16 && readable; j++) {
-            if (!safe_memory_read_u8((mach_vm_address_t)entry + 0x08 + j, &entry_guid[j])) {
-                readable = false;
-            }
-        }
-
-        if (readable && memcmp(entry_guid, guid, sizeof(StaticDataGuid)) == 0) {
-            return entry;
+            g_staticdata.entry_stride[type] = config->entry_size;
         }
     }
-
-    return NULL;
+    return g_staticdata.entry_stride[type];
 }
 
-// ============================================================================
-// Data Access - Generic (config-based)
-// ============================================================================
-
 /**
- * Get effective manager pointer for a type.
- * Prefers real_managers over metadata managers.
+ * The bank for a type, resolving it lazily through the headmaster hash table.
  */
-static void* get_effective_manager(StaticDataType type, bool* is_real) {
+static void* get_real_manager(StaticDataType type) {
     if (type < 0 || type >= STATICDATA_COUNT) return NULL;
-
-    // Prefer real manager if available
-    if (g_staticdata.real_managers[type]) {
-        if (is_real) *is_real = true;
-        return g_staticdata.real_managers[type];
+    if (!g_staticdata.real_managers[type]) {
+        capture_bank_via_hash_lookup(type);
     }
-
-    // Fall back to metadata
-    if (g_staticdata.managers[type]) {
-        if (is_real) *is_real = false;
-        return g_staticdata.managers[type];
-    }
-
-    return NULL;
+    return g_staticdata.real_managers[type];
 }
 
-/**
- * Generic count getter using config.
- *
- * For TypeContext HashMap: count is at +0x7C (Keys.size_)
- * For Session Manager: count is at config->count_offset (typically +0x7C too)
- */
-static int generic_get_count(StaticDataType type) {
-    if (type < 0 || type >= STATICDATA_COUNT) return -1;
-
-    bool is_real = false;
-    void* mgr = get_effective_manager(type, &is_real);
-    if (!mgr) return -1;
-
-    const ManagerConfig* config = &g_manager_configs[type];
-
-    // Both TypeContext and Session managers have count at +0x7C
-    int offset = is_real ? config->count_offset : FEATMANAGER_META_COUNT_OFFSET;
-
-    int32_t count = 0;
-    if (!safe_memory_read_i32((mach_vm_address_t)mgr + offset, &count)) {
-        return -1;
-    }
-    return count;
-}
-
-/**
- * Generic entry getter by index using config.
- *
- * IMPORTANT: TypeContext HashMap (is_real=false) vs Session Manager (is_real=true):
- * - TypeContext: Values.buf_ at +0x80 contains array of POINTERS to entries
- * - Session Manager: +0x80 contains flat array of entry structs
- *
- * For TypeContext, we must dereference: entry = ((void**)array)[index]
- * For Session Manager: entry = array + (index * entry_size)
- */
-static void* generic_get_by_index(StaticDataType type, int index) {
-    if (type < 0 || type >= STATICDATA_COUNT) return NULL;
-
-    bool is_real = false;
-    void* mgr = get_effective_manager(type, &is_real);
-    if (!mgr) return NULL;
-
-    const ManagerConfig* config = &g_manager_configs[type];
-
-    // Determine offsets based on manager type
-    int count_offset = is_real ? config->count_offset : FEATMANAGER_META_COUNT_OFFSET;
-    int array_offset = is_real ? config->array_offset : FEATMANAGER_META_VALUES_OFFSET;
-
-    // Read count
-    int32_t count = 0;
-    if (!safe_memory_read_i32((mach_vm_address_t)mgr + count_offset, &count)) {
-        return NULL;
-    }
+static void* entry_at(StaticDataType type, void* bank, void* array, int32_t count, int index) {
     if (index < 0 || index >= count) return NULL;
+    int stride = effective_entry_size(type, bank);
+    if (stride <= 0) return NULL;
 
-    // Read array pointer
-    void* array = NULL;
-    if (!safe_memory_read_pointer((mach_vm_address_t)mgr + array_offset, &array)) {
-        return NULL;
-    }
-    if (!array) return NULL;
-
-    void* entry = NULL;
-
-    if (is_real) {
-        // Session Manager: flat array of structs
-        entry = (uint8_t*)array + (index * config->entry_size);
-    } else {
-        // TypeContext HashMap: array of pointers to entries
-        // Each element is 8 bytes (pointer size)
-        void* entry_ptr = NULL;
-        if (!safe_memory_read_pointer((mach_vm_address_t)array + (index * sizeof(void*)), &entry_ptr)) {
-            return NULL;
-        }
-        entry = entry_ptr;
-    }
-
-    if (!entry) return NULL;
-
-    // Verify the entry address is readable
+    void* entry = (uint8_t*)array + ((size_t)index * (size_t)stride);
     int32_t test_read = 0;
     if (!safe_memory_read_i32((mach_vm_address_t)entry, &test_read)) {
         return NULL;
     }
-
     return entry;
-}
-
-/**
- * Generic GUID lookup using config.
- *
- * Handles both TypeContext HashMap (pointer array) and Session Manager (flat array).
- */
-static void* generic_get_by_guid(StaticDataType type, const StaticDataGuid* guid) {
-    if (type < 0 || type >= STATICDATA_COUNT || !guid) return NULL;
-
-    bool is_real = false;
-    void* mgr = get_effective_manager(type, &is_real);
-    if (!mgr) return NULL;
-
-    const ManagerConfig* config = &g_manager_configs[type];
-
-    // Determine offsets based on manager type
-    int count_offset = is_real ? config->count_offset : FEATMANAGER_META_COUNT_OFFSET;
-    int array_offset = is_real ? config->array_offset : FEATMANAGER_META_VALUES_OFFSET;
-
-    int32_t count = 0;
-    if (!safe_memory_read_i32((mach_vm_address_t)mgr + count_offset, &count)) {
-        return NULL;
-    }
-
-    void* array = NULL;
-    if (!safe_memory_read_pointer((mach_vm_address_t)mgr + array_offset, &array)) {
-        return NULL;
-    }
-    if (!array) return NULL;
-
-    // Linear search through entries comparing GUIDs
-    // GUID is at offset +0x08 in each entry (after VMT pointer)
-    for (int i = 0; i < count; i++) {
-        void* entry = NULL;
-
-        if (is_real) {
-            // Session Manager: flat array of structs
-            entry = (uint8_t*)array + (i * config->entry_size);
-        } else {
-            // TypeContext HashMap: pointer array
-            if (!safe_memory_read_pointer((mach_vm_address_t)array + (i * sizeof(void*)), &entry)) {
-                continue;
-            }
-        }
-
-        if (!entry) continue;
-
-        // Read and compare GUID at +0x08
-        uint8_t guid_bytes[16];
-        bool readable = true;
-        for (int j = 0; j < 16 && readable; j++) {
-            if (!safe_memory_read_u8((mach_vm_address_t)entry + 0x08 + j, &guid_bytes[j])) {
-                readable = false;
-            }
-        }
-
-        if (readable && memcmp(guid_bytes, guid, sizeof(StaticDataGuid)) == 0) {
-            return entry;
-        }
-    }
-
-    return NULL;
 }
 
 int staticdata_get_count(StaticDataType type) {
-    // Use feat-specific for backwards compatibility, generic for others
-    if (type == STATICDATA_FEAT) {
-        return feat_get_count();
-    }
-    return generic_get_count(type);
+    void* bank = get_real_manager(type);
+    int32_t count = 0;
+    void* array = NULL;
+    if (!read_bank_array(bank, &count, &array)) return -1;
+    return count;
 }
 
 StaticDataPtr staticdata_get_by_index(StaticDataType type, int index) {
-    if (type == STATICDATA_FEAT) {
-        return feat_get_by_index(index);
-    }
-    return generic_get_by_index(type, index);
+    void* bank = get_real_manager(type);
+    int32_t count = 0;
+    void* array = NULL;
+    if (!read_bank_array(bank, &count, &array)) return NULL;
+    return entry_at(type, bank, array, count, index);
 }
 
 StaticDataPtr staticdata_get_by_guid(StaticDataType type, const StaticDataGuid* guid) {
-    if (type == STATICDATA_FEAT) {
-        return feat_get_by_guid(guid);
+    if (!guid) return NULL;
+    void* bank = get_real_manager(type);
+    int32_t count = 0;
+    void* array = NULL;
+    if (!read_bank_array(bank, &count, &array)) return NULL;
+
+    // Linear scan comparing the ResourceUUID at +0x08 (after the vtable)
+    for (int i = 0; i < count; i++) {
+        void* entry = entry_at(type, bank, array, count, i);
+        if (!entry) continue;
+
+        uint8_t entry_guid[16];
+        if (!safe_memory_read((mach_vm_address_t)entry + 0x08, entry_guid, sizeof(entry_guid))) {
+            continue;
+        }
+        if (memcmp(entry_guid, guid, sizeof(StaticDataGuid)) == 0) {
+            return entry;
+        }
     }
-    return generic_get_by_guid(type, guid);
+    return NULL;
 }
 
 // ============================================================================
 // GUID Parsing
 // ============================================================================
 
+/**
+ * Canonical GUID text -> in-memory ls::Guid bytes.
+ *
+ * ls::Guid stores the last two textual groups with adjacent byte pairs
+ * swapped (guid_lookup.c). A memory-order sscanf produced ResourceUUIDs whose
+ * D and E groups were pair-swapped, so canonical GUIDs from Races.lsx never
+ * matched Ext.StaticData.Get(). Both directions now go through the entity
+ * system's guid_parse()/guid_to_string(), which Phase 5 verified against the
+ * host character on 7398727.
+ */
 static bool parse_guid(const char* str, StaticDataGuid* out) {
     if (!str || !out) return false;
 
-    // Format: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-    unsigned int d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11;
-
-    if (sscanf(str, "%8x-%4x-%4x-%2x%2x-%2x%2x%2x%2x%2x%2x",
-               &d1, &d2, &d3, &d4, &d5, &d6, &d7, &d8, &d9, &d10, &d11) != 11) {
+    Guid guid;
+    if (!guid_parse(str, &guid)) {
         return false;
     }
-
-    out->data1 = d1;
-    out->data2 = (uint16_t)d2;
-    out->data3 = (uint16_t)d3;
-    out->data4[0] = (uint8_t)d4;
-    out->data4[1] = (uint8_t)d5;
-    out->data4[2] = (uint8_t)d6;
-    out->data4[3] = (uint8_t)d7;
-    out->data4[4] = (uint8_t)d8;
-    out->data4[5] = (uint8_t)d9;
-    out->data4[6] = (uint8_t)d10;
-    out->data4[7] = (uint8_t)d11;
-
+    memcpy(out, &guid, sizeof(*out));
     return true;
+}
+
+/**
+ * In-memory ls::Guid bytes -> canonical GUID text (37-byte buffer).
+ */
+static void format_guid(const StaticDataGuid* guid, char* out_buf) {
+    Guid engine_guid;
+    memcpy(&engine_guid, guid, sizeof(engine_guid));
+    guid_to_string(&engine_guid, out_buf);
 }
 
 StaticDataPtr staticdata_get_by_guid_string(StaticDataType type, const char* guid_str) {
@@ -1651,12 +1295,7 @@ bool staticdata_get_guid_string(StaticDataType type, StaticDataPtr entry, char* 
         return false;
     }
 
-    snprintf(out_buf, buf_size, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-             guid.data1, guid.data2, guid.data3,
-             guid.data4[0], guid.data4[1],
-             guid.data4[2], guid.data4[3], guid.data4[4],
-             guid.data4[5], guid.data4[6], guid.data4[7]);
-
+    format_guid(&guid, out_buf);
     return true;
 }
 
@@ -1678,6 +1317,9 @@ const char* staticdata_get_name(StaticDataType type, StaticDataPtr entry) {
             break;
         case STATICDATA_BACKGROUND:
             // Background has no FixedString Name - only TranslatedString DisplayName
+            return NULL;
+        case STATICDATA_CC_APPEARANCE_VISUAL:
+            // RootTemplate GUID sits at +0x18; the type has no FixedString Name
             return NULL;
         case STATICDATA_GOD:
             name_offset = GOD_OFFSET_NAME;  // 0x18
@@ -1726,6 +1368,93 @@ const char* staticdata_get_display_name(StaticDataType type, StaticDataPtr entry
     (void)type;
     (void)entry;
     return NULL;
+}
+
+// ============================================================================
+// Typed Field Access
+// ============================================================================
+
+/**
+ * Read a FixedString index at `addr` and resolve it. Returns false only when
+ * the index itself is unreadable; an unset index yields *out == NULL.
+ */
+static bool read_fixed_string_at(mach_vm_address_t addr, const char** out) {
+    uint32_t fs_index = 0;
+    if (!safe_memory_read_u32(addr, &fs_index)) {
+        return false;
+    }
+    *out = (fs_index == 0 || fs_index == 0xFFFFFFFF) ? NULL : fixed_string_resolve(fs_index);
+    return true;
+}
+
+static bool read_guid_at(mach_vm_address_t addr, char* out_buf) {
+    Guid guid;
+    if (!safe_memory_read(addr, &guid, sizeof(guid))) {
+        return false;
+    }
+    guid_to_string(&guid, out_buf);
+    return true;
+}
+
+bool staticdata_read_field(StaticDataPtr entry, const StaticDataField* field,
+                           StaticDataFieldValue* out) {
+    if (!entry || !field || !out) return false;
+
+    memset(out, 0, sizeof(*out));
+    out->kind = (int)field->kind;
+    mach_vm_address_t addr = (mach_vm_address_t)entry + field->offset;
+
+    switch (field->kind) {
+        case SD_FIELD_GUID:
+            return read_guid_at(addr, out->guid);
+        case SD_FIELD_U8:
+            return safe_memory_read_u8(addr, &out->u8);
+        case SD_FIELD_BOOL: {
+            uint8_t raw = 0;
+            if (!safe_memory_read_u8(addr, &raw)) return false;
+            out->boolean = raw != 0;
+            return true;
+        }
+        case SD_FIELD_U32:
+            return safe_memory_read_u32(addr, &out->u32);
+        case SD_FIELD_FIXEDSTRING:
+            return read_fixed_string_at(addr, &out->str);
+        case SD_FIELD_TRANSLATEDSTRING: {
+            // TranslatedString = { RuntimeStringHandle Handle; RuntimeStringHandle ArgumentString; }
+            // RuntimeStringHandle = { FixedString Handle; uint16_t Version; } (8 bytes with padding)
+            if (!read_fixed_string_at(addr, &out->translated.handle) ||
+                !safe_memory_read(addr + 0x04, &out->translated.version, sizeof(uint16_t)) ||
+                !read_fixed_string_at(addr + 0x08, &out->translated.argument) ||
+                !safe_memory_read(addr + 0x0C, &out->translated.argument_version, sizeof(uint16_t))) {
+                return false;
+            }
+            return true;
+        }
+        case SD_FIELD_GUID_ARRAY:
+            // Array<Guid> = { Guid* buf; uint32_t capacity; uint32_t size; }
+            return safe_memory_read_u32(addr + 0x0C, &out->guid_array.size);
+    }
+    return false;
+}
+
+bool staticdata_read_guid_array_at(StaticDataPtr entry, const StaticDataField* field,
+                                   uint32_t index, char* out_buf, size_t buf_size) {
+    if (!entry || !field || !out_buf || buf_size < 37 ||
+        field->kind != SD_FIELD_GUID_ARRAY) {
+        return false;
+    }
+
+    mach_vm_address_t addr = (mach_vm_address_t)entry + field->offset;
+    void* buf = NULL;
+    uint32_t size = 0;
+    if (!safe_memory_read_pointer(addr, &buf) ||
+        !safe_memory_read_u32(addr + 0x0C, &size)) {
+        return false;
+    }
+    if (!buf || index >= size) {
+        return false;
+    }
+    return read_guid_at((mach_vm_address_t)buf + (mach_vm_address_t)index * sizeof(Guid), out_buf);
 }
 
 // ============================================================================
@@ -1889,21 +1618,18 @@ void staticdata_dump_status(void) {
         void* real = g_staticdata.real_managers[i];
 
         if (real) {
-            // Session manager (from hook) - flat array
             int32_t count = 0;
             void* array = NULL;
             safe_memory_read_i32((mach_vm_address_t)real + FEATMANAGER_REAL_COUNT_OFFSET, &count);
             safe_memory_read_pointer((mach_vm_address_t)real + FEATMANAGER_REAL_ARRAY_OFFSET, &array);
-            log_message("  %s: SESSION %p (count=%d, flat_array=%p) [metadata=%p]",
-                        s_type_names[i], real, count, array, meta);
+            log_message("  %s: BANK %p (count=%d, array=%p, stride=0x%x) [slot=%p]",
+                        s_type_names[i], real, count, array,
+                        effective_entry_size((StaticDataType)i, real), meta);
         } else if (meta) {
-            // TypeContext HashMap - pointer array (Dec 20, 2025 fix)
-            int32_t count = 0;
-            void* values = NULL;
-            safe_memory_read_i32((mach_vm_address_t)meta + FEATMANAGER_META_COUNT_OFFSET, &count);
-            safe_memory_read_pointer((mach_vm_address_t)meta + FEATMANAGER_META_VALUES_OFFSET, &values);
-            log_message("  %s: HASHMAP %p (count=%d, ptr_array=%p)",
-                        s_type_names[i], meta, count, values);
+            int32_t type_index = -1;
+            safe_memory_read_i32((mach_vm_address_t)meta, &type_index);
+            log_message("  %s: slot %p (type_index=%d), bank not resolved",
+                        s_type_names[i], meta, type_index);
         } else {
             log_message("  %s: not captured", s_type_names[i]);
         }
@@ -1917,28 +1643,19 @@ bool staticdata_get_raw_info(StaticDataType type, StaticDataRawInfo* out) {
 
     memset(out, 0, sizeof(*out));
 
-    void* meta = g_staticdata.managers[type];
-    void* real = g_staticdata.real_managers[type];
-
-    if (real) {
-        out->manager_ptr = (uintptr_t)real;
-        out->is_session = true;
-        safe_memory_read_i32((mach_vm_address_t)real + FEATMANAGER_REAL_COUNT_OFFSET, &out->count);
-        safe_memory_read_pointer((mach_vm_address_t)real + FEATMANAGER_REAL_ARRAY_OFFSET, (void**)&out->array_ptr);
-        out->count_offset = FEATMANAGER_REAL_COUNT_OFFSET;
-        out->array_offset = FEATMANAGER_REAL_ARRAY_OFFSET;
-        return true;
-    } else if (meta) {
-        out->manager_ptr = (uintptr_t)meta;
-        out->is_session = false;
-        safe_memory_read_i32((mach_vm_address_t)meta + FEATMANAGER_META_COUNT_OFFSET, &out->count);
-        safe_memory_read_pointer((mach_vm_address_t)meta + FEATMANAGER_META_VALUES_OFFSET, (void**)&out->array_ptr);
-        out->count_offset = FEATMANAGER_META_COUNT_OFFSET;
-        out->array_offset = FEATMANAGER_META_VALUES_OFFSET;
-        return true;
+    void* real = get_real_manager(type);
+    if (!real) {
+        return false;
     }
 
-    return false;
+    out->manager_ptr = (uintptr_t)real;
+    out->is_session = true;
+    safe_memory_read_i32((mach_vm_address_t)real + FEATMANAGER_REAL_COUNT_OFFSET, &out->count);
+    safe_memory_read_pointer((mach_vm_address_t)real + FEATMANAGER_REAL_ARRAY_OFFSET, (void**)&out->array_ptr);
+    out->count_offset = FEATMANAGER_REAL_COUNT_OFFSET;
+    out->array_offset = FEATMANAGER_REAL_ARRAY_OFFSET;
+    out->entry_stride = effective_entry_size(type, real);
+    return true;
 }
 
 void staticdata_dump_entries(StaticDataType type, int max_entries) {

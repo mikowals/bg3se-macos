@@ -2,19 +2,23 @@
  * staticdata_manager.h - StaticData Manager for BG3SE-macOS
  *
  * Provides access to the game's static data managers for immutable game data:
- * Feats, Races, Backgrounds, Origins, Gods, Classes, and related types.
+ * Feats, Races, Backgrounds, Origins, Gods, Classes, character-creation
+ * appearance visuals, and related types.
  *
  * Architecture:
  *   Unlike Windows BG3SE which uses eoc__gGuidResourceManager,
  *   macOS BG3 uses the ImmutableDataHeadmaster TypeContext pattern.
- *   Managers are captured via hooks on accessor functions and stored
- *   in a local registry for Lua access.
+ *   The TypeContext lists each manager's m_TypeIndex global; the bank
+ *   itself (GuidResourceBank<T>) is resolved from that index through the
+ *   headmaster's hash table, or captured by Get<T> hooks. Entries live in
+ *   the bank's flat Values array (+0x7C count, +0x80 array) with stride
+ *   sizeof(T), which is measured live on first use.
  *
- * Discovery (Dec 2025):
- *   - FeatManager accessed via Context.field_0x130
+ * Discovery (Dec 2025, revised 2026-09-15 on 4.1.1.7398727):
  *   - FeatManager::GetFeats at 0x101b752b4 (x1 = FeatManager*)
- *   - FeatManager structure: +0x7C = count, +0x80 = array ptr
- *   - Each Feat is 0x128 bytes
+ *   - Bank structure: +0x7C = Resources.Keys.size, +0x80 = Resources.Values.buf
+ *   - Each Feat is 0x128 bytes; other strides in staticdata_manager.c
+ *   - The TypeContext "manager_ptr" is the TypeId global, never a bank
  */
 
 #ifndef STATICDATA_MANAGER_H
@@ -42,6 +46,7 @@ typedef enum {
     STATICDATA_PROGRESSION,
     STATICDATA_ACTION_RESOURCE,
     STATICDATA_FEAT_DESCRIPTION,
+    STATICDATA_CC_APPEARANCE_VISUAL,  // eoc::CharacterCreationAppearanceVisualManager (#100)
     STATICDATA_COUNT  // Number of types
 } StaticDataType;
 
@@ -104,18 +109,19 @@ int staticdata_type_from_name(const char* name);
 // ============================================================================
 
 /**
- * Check if a specific manager type is available.
+ * Check if a specific type's bank is available, resolving it lazily through
+ * the ImmutableDataHeadmaster hash table when the TypeContext slot is known.
  *
  * @param type Static data type
- * @return true if the manager has been captured
+ * @return true if the bank has been captured
  */
 bool staticdata_has_manager(StaticDataType type);
 
 /**
- * Get the raw manager pointer for a type.
+ * Get the raw GuidResourceBank<T> pointer for a type.
  *
  * @param type Static data type
- * @return Manager pointer, or NULL if not available
+ * @return Bank pointer, or NULL if not available
  */
 void* staticdata_get_manager(StaticDataType type);
 
@@ -148,11 +154,11 @@ int staticdata_post_init_capture(void);
 int staticdata_force_capture(void);
 
 /**
- * Force capture managers via hash lookup in ImmutableDataHeadmaster.
- * This works for types without Get<T> hooks (Race, God, FeatDescription).
- * Requires ImmutableDataHeadmaster and TypeContext to be captured first.
+ * Resolve every uncaptured bank via hash lookup in ImmutableDataHeadmaster.
+ * Runs automatically at post-init and lazily on access; requires the
+ * headmaster (captured by any Get<T> hook) and the TypeContext slots.
  *
- * @return Number of managers newly captured via hash lookup
+ * @return Number of banks newly captured via hash lookup
  */
 int staticdata_hash_lookup_capture(void);
 
@@ -239,6 +245,57 @@ const char* staticdata_get_name(StaticDataType type, StaticDataPtr entry);
 const char* staticdata_get_display_name(StaticDataType type, StaticDataPtr entry);
 
 // ============================================================================
+// Typed Field Access (layouts in staticdata_layouts.h)
+// ============================================================================
+
+struct StaticDataField;
+
+/**
+ * Value of one typed field read from an entry.
+ * `kind` mirrors the field's StaticDataFieldKind; only the matching member
+ * is populated. Strings point at engine-owned storage (FixedString table) or
+ * at the value's own inline buffers.
+ */
+typedef struct {
+    int kind;
+    union {
+        uint8_t  u8;
+        bool     boolean;
+        uint32_t u32;
+        char     guid[37];
+        const char *str;                // FixedString text, NULL when unset
+        struct {
+            const char *handle;         // TranslatedString.Handle.Handle text ("h…"), NULL when unset
+            uint16_t    version;        // TranslatedString.Handle.Version
+            const char *argument;       // TranslatedString.ArgumentString.Handle text, NULL when unset
+            uint16_t    argument_version;
+        } translated;
+        struct {
+            uint32_t size;              // Array<Guid>.size
+        } guid_array;
+    };
+} StaticDataFieldValue;
+
+/**
+ * Read one scalar/string/array-header field from an entry.
+ * For SD_FIELD_GUID_ARRAY only the element count is read; elements come
+ * from staticdata_read_guid_array_at().
+ *
+ * @return true if every byte was readable
+ */
+bool staticdata_read_field(StaticDataPtr entry, const struct StaticDataField *field,
+                           StaticDataFieldValue *out);
+
+/**
+ * Read element `index` of an Array<Guid> field as a canonical GUID string.
+ *
+ * @param out_buf Buffer of at least 37 bytes
+ * @return true if the element was readable
+ */
+bool staticdata_read_guid_array_at(StaticDataPtr entry, const struct StaticDataField *field,
+                                   uint32_t index, char *out_buf, size_t buf_size);
+
+// ============================================================================
 // Frida Capture Integration
 // ============================================================================
 
@@ -291,20 +348,21 @@ void staticdata_try_typecontext_capture(void);
  * Raw manager info for debugging.
  */
 typedef struct {
-    uintptr_t manager_ptr;    // Raw manager pointer
-    uintptr_t array_ptr;      // Array pointer at configured offset
-    int32_t   count;          // Count at configured offset
+    uintptr_t manager_ptr;    // GuidResourceBank<T> pointer
+    uintptr_t array_ptr;      // Resources.Values.buf
+    int32_t   count;          // Resources.Keys.size
     int       count_offset;   // Offset used for count (0x7C)
     int       array_offset;   // Offset used for array (0x80)
-    bool      is_session;     // true = session manager (hook), false = TypeContext
+    int       entry_stride;   // sizeof(T) in use (live-measured or configured)
+    bool      is_session;     // always true: only real banks are reported
 } StaticDataRawInfo;
 
 /**
- * Get raw manager info for debugging.
+ * Get raw bank info for debugging.
  *
  * @param type Static data type
  * @param out Output struct
- * @return true if manager found
+ * @return true if the bank is captured
  */
 bool staticdata_get_raw_info(StaticDataType type, StaticDataRawInfo* out);
 

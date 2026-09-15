@@ -1,5 +1,42 @@
 # StaticData Manager Structure Analysis
 
+> **Revision 2026-09-15 (4.1.1.7398727, live):** the TypeContext `manager_ptr`
+> is **not** a bank and never was on this build. It is the address of
+> `ls::TypeId<Manager, ls::ImmutableDataHeadmaster>::m_TypeIndex` (the
+> `eoc::FeatManager` slot at runtime `0x10cd9fc30` is unslid `0x108927c30`,
+> the `nm` address of that global; `eoc::CharacterCreationAppearanceVisualManager`
+> `0x10cd9fac0` ↔ `0x108927ac0`). Reading `+0x7C`/`+0x80` from it returns
+> neighbouring globals, which is why the "HASHMAP" status lines showed
+> `Feat count=0`, `Class count=24576, ptr_array=0x75`, and why `GetAll()` was
+> empty or garbage for six of nine types. The bank is resolved from the
+> type index through the headmaster's `HashMap<StaticDataTypeIndex,
+> GuidResourceBankBase*>` (`lookup_manager_by_type_index`), for every type,
+> at post-init and lazily on access.
+>
+> **Bank layout (matches Windows `GuidResourceBank<T>`):** `GuidResourceBankBase`
+> is 0x50 bytes (vtable, `LSXRegionName`, `LSXResourceNodeName`,
+> `ResourceGuidsByMod` HashMap 0x40); `HashMap<Guid, T> Resources` follows at
+> +0x50, so `Keys.size` is at **+0x7C** and `Values.buf` at **+0x80**, a flat
+> `T[]` with stride `sizeof(T)`. Every entry starts with the resource vtable
+> pointer, so the stride is measurable at runtime as the distance to its next
+> repeat (`detect_entry_stride`). Live strides on 7398727:
+>
+> | Type | Count | Stride | Previous constant |
+> |------|-------|--------|-------------------|
+> | Feat | 41 | 0x128 | 0x128 |
+> | Race | 156 | 0x168 | 0x200 (estimate, wrong) |
+> | Background | 22 | 0x70 | 0x80 (estimate, wrong) |
+> | God | 24 | 0x60 | 0x60 |
+> | Class | 70 | 0x110 | 0x100 (estimate, wrong) |
+> | ActionResource | 87 | 0x60 | 0x80 (estimate, wrong) |
+> | FeatDescription | 41 | 0x60 | 0x80 (estimate, wrong) |
+> | Origin, Progression, CharacterCreationAppearanceVisual | see the Phase 6 section of `docs/parity-100/LIVE-VERIFICATION-2026-09-14.md` | | |
+>
+> The sections below are the December 2025 analysis and are kept for the
+> FeatManager::GetFeats access-path evidence; their "TypeContext metadata IS
+> a bank" conclusion is superseded.
+
+
 ## Summary
 
 Analysis of FeatManager and other ImmutableDataHeadmaster-managed types revealed two distinct structures:

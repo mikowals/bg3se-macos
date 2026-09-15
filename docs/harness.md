@@ -60,7 +60,7 @@ tooling.
 | `crashlog` | Parse the mmap crash ring buffer (works without a socket) |
 | `benchmark "<lua>"` | Measure per-call cost of a Lua fragment |
 | `diff-test base.json curr.json` | Compare two `test` JSON outputs |
-| `doctor` | Verify every prerequisite (SDK, BG3 install, launcher flag, codesign) |
+| `doctor` | Verify every prerequisite: BG3 install and patch state, launcher flag, Steam and memory readiness, windowed mode, and the build toolchain (`xcode-select -p`, macOS SDK, `clang++`, the `<tuple>` + MetalKit include chain from #88, CMake). Toolchain failures are warnings with the fix inline; they never block a launch |
 | `save list` | Available saves with metadata |
 | `save mods [--continue\|NAME]` | Infer save-required mods from `.lsv` archive markers |
 | `save snapshot <name> [--source DIR]` | Copy a save into a named fixture; records the source directory in `fixture_meta.json` |

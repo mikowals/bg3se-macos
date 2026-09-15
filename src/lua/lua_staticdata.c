@@ -7,10 +7,18 @@
  *   Ext.StaticData.GetAll(type) - Get all entries of a type as array of tables
  *   Ext.StaticData.Get(type, guid) - Get single entry by GUID string
  *   Ext.StaticData.GetCount(type) - Get count of entries for a type
+ *
+ * Entries carry ResourceUUID/Name/Type for every type. Types with a layout in
+ * staticdata_layouts.c also expose their Windows property surface: GUIDs as
+ * canonical strings, FixedStrings as text, TranslatedStrings as
+ * { Handle = { Handle, Version }, ArgumentString = { Handle, Version } },
+ * and Array<Guid> as an array of GUID strings. Unreadable fields are omitted
+ * rather than faked.
  */
 
 #include "lua_staticdata.h"
 #include "../staticdata/staticdata_manager.h"
+#include "../staticdata/staticdata_layouts.h"
 #include "../core/logging.h"
 #include <lua.h>
 #include <lauxlib.h>
@@ -20,6 +28,78 @@
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/**
+ * Push a RuntimeStringHandle as { Handle = "h…", Version = n }.
+ * An unset handle pushes Handle = "" so mods can test for emptiness the same
+ * way they do on Windows.
+ */
+static void push_runtime_string_handle(lua_State *L, const char* handle, uint16_t version) {
+    lua_createtable(L, 0, 2);
+    lua_pushstring(L, handle ? handle : "");
+    lua_setfield(L, -2, "Handle");
+    lua_pushinteger(L, version);
+    lua_setfield(L, -2, "Version");
+}
+
+/**
+ * Append one layout field to the entry table on top of the stack.
+ * A field whose bytes cannot be read is skipped (left nil).
+ */
+static void push_layout_field(lua_State *L, StaticDataPtr entry, const StaticDataField* field) {
+    StaticDataFieldValue value;
+    if (!staticdata_read_field(entry, field, &value)) {
+        return;
+    }
+
+    switch (field->kind) {
+        case SD_FIELD_GUID:
+            lua_pushstring(L, value.guid);
+            break;
+        case SD_FIELD_U8:
+            lua_pushinteger(L, value.u8);
+            break;
+        case SD_FIELD_BOOL:
+            lua_pushboolean(L, value.boolean);
+            break;
+        case SD_FIELD_U32:
+            lua_pushinteger(L, value.u32);
+            break;
+        case SD_FIELD_FIXEDSTRING:
+            lua_pushstring(L, value.str ? value.str : "");
+            break;
+        case SD_FIELD_TRANSLATEDSTRING:
+            lua_createtable(L, 0, 2);
+            push_runtime_string_handle(L, value.translated.handle, value.translated.version);
+            lua_setfield(L, -2, "Handle");
+            push_runtime_string_handle(L, value.translated.argument,
+                                       value.translated.argument_version);
+            lua_setfield(L, -2, "ArgumentString");
+            break;
+        case SD_FIELD_GUID_ARRAY: {
+            lua_createtable(L, (int)value.guid_array.size, 0);
+            char guid_str[40];
+            for (uint32_t i = 0; i < value.guid_array.size; i++) {
+                if (!staticdata_read_guid_array_at(entry, field, i, guid_str, sizeof(guid_str))) {
+                    break;
+                }
+                lua_pushstring(L, guid_str);
+                lua_rawseti(L, -2, (lua_Integer)i + 1);
+            }
+            break;
+        }
+        default:
+            return;
+    }
+
+    lua_setfield(L, -2, field->name);
+}
+
+static void push_layout_fields(lua_State *L, StaticDataPtr entry, const StaticDataLayout* layout) {
+    for (int i = 0; i < layout->field_count; i++) {
+        push_layout_field(L, entry, &layout->fields[i]);
+    }
+}
 
 /**
  * Push a static data entry as a Lua table.
@@ -56,6 +136,12 @@ static void push_staticdata_entry(lua_State *L, StaticDataType type, StaticDataP
     // Add Type
     lua_pushstring(L, staticdata_type_name(type));
     lua_setfield(L, -2, "Type");
+
+    // Typed fields for types with a layout
+    const StaticDataLayout* layout = staticdata_layout_for(type);
+    if (layout) {
+        push_layout_fields(L, entry, layout);
+    }
 
     // Add raw pointer for debugging
     lua_pushlightuserdata(L, entry);
@@ -388,6 +474,9 @@ static int lua_staticdata_proberaw(lua_State *L) {
 
     lua_pushinteger(L, info.array_offset);
     lua_setfield(L, -2, "array_offset");
+
+    lua_pushinteger(L, info.entry_stride);
+    lua_setfield(L, -2, "entry_stride");
 
     lua_pushboolean(L, info.is_session);
     lua_setfield(L, -2, "is_session");

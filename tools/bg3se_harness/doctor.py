@@ -1,6 +1,9 @@
 """Prerequisite verifier for bg3se-harness.
 
-Checks that all required paths, permissions, and tools are available.
+Checks that all required paths, permissions, and tools are available:
+the BG3 install and patch state, the harness directories, Steam and memory
+readiness, and the build toolchain (developer directory, macOS SDK, clang++,
+and the Objective-C++ include chain that issues #77/#88 tripped over).
 Reports actionable diagnostics as JSON.
 
 Usage:
@@ -40,6 +43,139 @@ def _check(name, passed, detail=None, fix=None, severity="info", code=None):
     if fix and not passed:
         result["fix"] = fix
     return result
+
+
+# The exact include chain that fails with "'tuple' file not found" on a
+# mis-rooted CommandLineTools install: MetalKit -> ModelIO -> simd -> <tuple>.
+# CMakeLists.txt compiles the same source at configure time.
+TOOLCHAIN_PROBE_SOURCE = (
+    "#include <tuple>\n"
+    "#import <MetalKit/MetalKit.h>\n"
+    "int main() { std::tuple<int, MTKView *> probe{0, nil}; return std::get<0>(probe); }\n"
+)
+
+TOOLCHAIN_FIX = (
+    "Install the tools (xcode-select --install, or Xcode from the App Store), "
+    "then point the build at the SDK xcrun reports: "
+    'rm -rf build && cmake -B build -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)"'
+)
+
+
+def _run_tool(argv, run=subprocess.run, timeout=30, input_text=None):
+    """Run a toolchain command; returns (rc, stdout, stderr) and never raises.
+
+    A missing binary or a timeout reports rc -1 with the reason in stderr so
+    every check degrades to a readable failure instead of an exception.
+    """
+    try:
+        result = run(
+            argv, capture_output=True, text=True, timeout=timeout, input=input_text,
+        )
+    except FileNotFoundError:
+        return -1, "", f"{argv[0]}: not found"
+    except subprocess.TimeoutExpired:
+        return -1, "", f"{argv[0]}: timed out after {timeout}s"
+    except OSError as exc:
+        return -1, "", f"{argv[0]}: {exc}"
+    return result.returncode, (result.stdout or "").strip(), (result.stderr or "").strip()
+
+
+def _first_line(text):
+    return text.splitlines()[0] if text else ""
+
+
+def toolchain_checks(run=subprocess.run, path_exists=os.path.exists):
+    """Build-toolchain checks (#88). Warnings, never launch blockers.
+
+    `run` and `path_exists` are injectable so the suite can exercise each
+    failure shape without a real toolchain.
+    """
+    checks = []
+
+    # T1. Developer directory
+    rc, developer_dir, err = _run_tool(["xcode-select", "-p"], run)
+    developer_ok = rc == 0 and bool(developer_dir) and path_exists(developer_dir)
+    checks.append(_check(
+        "toolchain_developer_dir",
+        developer_ok,
+        detail=developer_dir if rc == 0 else _first_line(err),
+        fix=(
+            "sudo xcode-select -s /Library/Developer/CommandLineTools (CLT-only) or "
+            "sudo xcode-select -s /Applications/Xcode.app/Contents/Developer (Xcode); "
+            "xcode-select --install if neither exists"
+        ),
+        severity="warning",
+        code="toolchain_developer_dir" if not developer_ok else None,
+    ))
+
+    # T2. macOS SDK
+    rc, sdk_path, err = _run_tool(["xcrun", "--sdk", "macosx", "--show-sdk-path"], run)
+    sdk_ok = rc == 0 and bool(sdk_path) and path_exists(sdk_path)
+    checks.append(_check(
+        "toolchain_macos_sdk",
+        sdk_ok,
+        detail=sdk_path if rc == 0 else _first_line(err),
+        fix=TOOLCHAIN_FIX,
+        severity="warning",
+        code="toolchain_macos_sdk" if not sdk_ok else None,
+    ))
+
+    # T3. Objective-C++ compiler
+    rc, compiler_path, err = _run_tool(["xcrun", "--find", "clang++"], run)
+    compiler_ok = rc == 0 and bool(compiler_path)
+    compiler_detail = compiler_path if compiler_ok else _first_line(err)
+    if compiler_ok:
+        rc_v, version_out, _ = _run_tool([compiler_path, "--version"], run)
+        if rc_v == 0 and version_out:
+            compiler_detail = f"{compiler_path} ({_first_line(version_out)})"
+    checks.append(_check(
+        "toolchain_objcxx_compiler",
+        compiler_ok,
+        detail=compiler_detail,
+        fix="xcode-select --install",
+        severity="warning",
+        code="toolchain_objcxx_compiler" if not compiler_ok else None,
+    ))
+
+    # T4. libc++ + MetalKit include chain compiles against the SDK
+    if compiler_ok and sdk_ok:
+        rc, _, err = _run_tool(
+            [
+                compiler_path, "-x", "objective-c++", "-std=c++20",
+                "-isysroot", sdk_path, "-fsyntax-only", "-",
+            ],
+            run, timeout=60, input_text=TOOLCHAIN_PROBE_SOURCE,
+        )
+        include_ok = rc == 0
+        include_detail = (
+            "<tuple> + MetalKit compile against the SDK" if include_ok
+            else _first_line(err) or f"clang++ exited {rc}"
+        )
+    else:
+        include_ok = False
+        include_detail = "skipped: compiler or SDK unavailable"
+    checks.append(_check(
+        "toolchain_objcxx_includes",
+        include_ok,
+        detail=include_detail,
+        fix=TOOLCHAIN_FIX,
+        severity="warning",
+        code="toolchain_objcxx_includes" if not include_ok else None,
+    ))
+
+    # T5. CMake
+    rc, cmake_out, err = _run_tool(["cmake", "--version"], run)
+    cmake_ok = rc == 0
+    checks.append(_check(
+        "toolchain_cmake",
+        cmake_ok,
+        detail=_first_line(cmake_out) if cmake_ok else _first_line(err),
+        fix="brew install cmake (3.20 or newer)",
+        severity="warning",
+        code="toolchain_cmake" if not cmake_ok else None,
+    ))
+
+    return checks
 
 
 def run_doctor():
@@ -299,6 +435,9 @@ def run_doctor():
         severity="warning",
         code="window_mode_unverified" if not windowed_ok else None,
     ))
+
+    # 21-25. Build toolchain (#88): developer dir, SDK, clang++, include chain, cmake
+    checks.extend(toolchain_checks())
 
     # Summary
     passed = sum(1 for c in checks if c["passed"])

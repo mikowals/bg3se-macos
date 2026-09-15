@@ -38,22 +38,34 @@ cmake .. && cmake --build .
 
 ### "fatal error: 'tuple' file not found"
 
-CommandLineTools-only systems sometimes resolve the wrong SDK sysroot, so the
-C++ standard headers the Metal/simd headers include are never found. Current
-main auto-detects the SDK in `CMakeLists.txt` (via `xcrun --show-sdk-path`
-with a CommandLineTools fallback) — pull, wipe `build/`, and reconfigure:
+The Metal/ImGui backend is Objective-C++, and the SDK's simd headers include
+`<tuple>` (MetalKit → ModelIO → simd → `<tuple>`). On CommandLineTools-only
+systems the sysroot CMake resolves can point at an SDK whose libc++ headers
+are not where that chain expects, and the build dies at ~57% (#77, #88).
+
+Since v0.44.0 the configure step compiles that exact include chain and stops
+with a diagnosis instead of letting the build fail later. A failing configure
+prints `xcode-select -p`, `xcrun --show-sdk-path`, `CMAKE_OSX_SYSROOT`, the
+compiler, and where (if anywhere) `<tuple>` was found. The harness runs the
+same checks:
 ```bash
-git pull
-rm -rf build
-mkdir build && cd build
-cmake .. && cmake --build .
+PYTHONPATH=tools python3 -m bg3se_harness doctor   # toolchain_* rows
 ```
-If auto-detection still misses, pass the sysroot explicitly:
+Fixes, in order of likelihood:
 ```bash
-cmake -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" ..
+# 1. Point the build at the SDK xcrun reports
+rm -rf build && cmake -B build -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)"
+cmake --build build
+
+# 2. Repair the developer directory
+sudo xcode-select -s /Library/Developer/CommandLineTools            # CLT-only
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer     # Xcode
+
+# 3. Reinstall the tools
+xcode-select --install     # or install Xcode from the App Store
 ```
-Installing full Xcode (then `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`)
-also resolves it.
+`-DBG3SE_SKIP_TOOLCHAIN_PROBE=ON` bypasses the probe if you need to see the
+raw compiler error.
 
 ## Injection Not Working
 

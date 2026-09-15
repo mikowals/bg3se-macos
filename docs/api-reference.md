@@ -969,7 +969,7 @@ Access immutable game data (Feats, Races, Backgrounds, Origins, etc.). StaticDat
 | `Ext.StaticData.GetTypes()` | ✅ | B | Get list of available types |
 | `Ext.StaticData.IsReady()` | ✅ | B | Check if StaticData is available |
 
-### Supported Types (9 types)
+### Supported Types (10 types)
 
 | Type | Description |
 |------|-------------|
@@ -982,16 +982,28 @@ Access immutable game data (Feats, Races, Backgrounds, Origins, etc.). StaticDat
 | `Progression` | Level progression data |
 | `ActionResource` | Action resources (spell slots, etc.) |
 | `FeatDescription` | Feat description text |
+| `CharacterCreationAppearanceVisual` | Character-creation appearance visuals (heads, hair, horns; #100) |
 
 ### StaticData Entry Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `ResourceUUID` | string | Entry GUID |
+| `ResourceUUID` | string | Entry GUID (canonical text, as written in the game's `.lsx` files) |
 | `Name` | string | Internal name (if available) |
 | `DisplayName` | string | Display name (if available) |
 | `Type` | string | Static data type |
 | `_ptr` | userdata | Raw pointer (for debugging) |
+
+Types with a typed layout (`src/staticdata/staticdata_layouts.c`) also expose
+their Windows property surface. `CharacterCreationAppearanceVisual` entries carry:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `RootTemplate`, `RaceUUID`, `VisualResource`, `HeadAppearanceUUID`, `DefaultSkinColor` | string | GUIDs |
+| `BodyType`, `BodyShape`, `DefaultForBodyType` | integer | uint8 selectors |
+| `SlotName`, `IconIdOverride`, `TextureEntryPart` | string | FixedStrings (empty when unset) |
+| `DisplayName` | table | `{ Handle = { Handle = "h…", Version = n }, ArgumentString = { Handle, Version } }`; pass `DisplayName.Handle.Handle` to `Ext.Loca.GetTranslatedString` |
+| `Tags` | table | Array of GUID strings |
 
 ### Example
 

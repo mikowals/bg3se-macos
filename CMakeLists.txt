@@ -44,6 +44,73 @@ set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 # Build for both architectures (universal binary)
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 
+# ============================================
+# Toolchain probe (#77, #88)
+# ============================================
+# The Metal/ImGui backend is Objective-C++ and the SDK's simd headers include
+# <tuple>. On CommandLineTools-only machines a mismatched sysroot surfaces as
+# "fatal error: 'tuple' file not found" at ~57% of the build. Compile the same
+# include chain at configure time and fail here with the facts needed to fix it.
+option(BG3SE_SKIP_TOOLCHAIN_PROBE "Skip the configure-time Objective-C++ toolchain probe" OFF)
+if(NOT BG3SE_SKIP_TOOLCHAIN_PROBE)
+    include(CheckSourceCompiles)
+    check_source_compiles(OBJCXX "
+#include <tuple>
+#import <MetalKit/MetalKit.h>
+int main() { std::tuple<int, MTKView *> probe{0, nil}; return std::get<0>(probe); }
+" BG3SE_OBJCXX_TOOLCHAIN_OK)
+
+    if(NOT BG3SE_OBJCXX_TOOLCHAIN_OK)
+        execute_process(COMMAND xcode-select -p
+            OUTPUT_VARIABLE _probe_developer_dir OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET RESULT_VARIABLE _probe_xcs_rc)
+        if(NOT _probe_xcs_rc EQUAL 0)
+            set(_probe_developer_dir "<xcode-select -p failed: rc ${_probe_xcs_rc}>")
+        endif()
+        execute_process(COMMAND xcrun --sdk macosx --show-sdk-path
+            OUTPUT_VARIABLE _probe_xcrun_sdk OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET RESULT_VARIABLE _probe_xcrun_rc)
+        if(NOT _probe_xcrun_rc EQUAL 0)
+            set(_probe_xcrun_sdk "<xcrun --show-sdk-path failed: rc ${_probe_xcrun_rc}>")
+        endif()
+
+        # Where libc++'s <tuple> actually lives on this machine, if anywhere.
+        set(_probe_tuple_candidates
+            "${CMAKE_OSX_SYSROOT}/usr/include/c++/v1/tuple"
+            "${_probe_developer_dir}/usr/include/c++/v1/tuple"
+            "${_probe_developer_dir}/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1/tuple")
+        set(_probe_tuple_found "none of the expected locations")
+        foreach(_candidate IN LISTS _probe_tuple_candidates)
+            if(EXISTS "${_candidate}")
+                set(_probe_tuple_found "${_candidate}")
+                break()
+            endif()
+        endforeach()
+
+        message(FATAL_ERROR
+            "\n"
+            "The Objective-C++ toolchain cannot compile <tuple> + <MetalKit/MetalKit.h>,\n"
+            "so the build would fail on src/imgui/imgui_metal_backend.mm (issues #77, #88).\n"
+            "Details are in ${CMAKE_BINARY_DIR}/CMakeFiles/CMakeConfigureLog.yaml.\n"
+            "\n"
+            "  xcode-select -p         : ${_probe_developer_dir}\n"
+            "  xcrun --show-sdk-path   : ${_probe_xcrun_sdk}\n"
+            "  CMAKE_OSX_SYSROOT       : ${CMAKE_OSX_SYSROOT}\n"
+            "  CMAKE_OBJCXX_COMPILER   : ${CMAKE_OBJCXX_COMPILER} (${CMAKE_OBJCXX_COMPILER_VERSION})\n"
+            "  libc++ <tuple> found at : ${_probe_tuple_found}\n"
+            "\n"
+            "Fixes, in order of likelihood:\n"
+            "  1. Point the build at the SDK xcrun reports:\n"
+            "       rm -rf build && cmake -B build -DCMAKE_OSX_SYSROOT=\"$(xcrun --sdk macosx --show-sdk-path)\"\n"
+            "  2. Repair the developer directory:\n"
+            "       sudo xcode-select -s /Library/Developer/CommandLineTools   (CLT-only)\n"
+            "       sudo xcode-select -s /Applications/Xcode.app/Contents/Developer   (Xcode)\n"
+            "  3. Reinstall the tools: xcode-select --install, or install Xcode from the App Store.\n"
+            "Run `PYTHONPATH=tools python3 -m bg3se_harness doctor` for the same checks as JSON.\n"
+            "Pass -DBG3SE_SKIP_TOOLCHAIN_PROBE=ON to bypass this probe.\n")
+    endif()
+endif()
+
 # Output directory
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -216,6 +283,7 @@ add_library(bg3se SHARED
     src/lua/lua_localization.c
     src/lua/lua_ui.c
     src/staticdata/staticdata_manager.c
+    src/staticdata/staticdata_layouts.c
     src/lua/lua_staticdata.c
     src/template/template_manager.c
     src/lua/lua_template.c
@@ -368,6 +436,7 @@ if(BUILD_TESTS)
         tests/tier0/test_arm64_prologue.c
         tests/tier0/test_enum_ext.c
         tests/tier0/test_osi_hook_abi.c
+        tests/tier0/test_staticdata_layouts.c
         tests/tier0/stub_logging.c
         src/core/safe_memory.c
         src/entity/guid_lookup.c
@@ -384,6 +453,7 @@ if(BUILD_TESTS)
         src/enum/enum_lua.c
         src/enum/bitfield_lua.c
         src/enum/enum_ext.c
+        src/staticdata/staticdata_layouts.c
     )
     target_include_directories(bg3se_test_tier0 PRIVATE
         ${CMAKE_SOURCE_DIR}/tests/tier0
@@ -394,6 +464,7 @@ if(BUILD_TESTS)
         ${CMAKE_SOURCE_DIR}/src/lua
         ${CMAKE_SOURCE_DIR}/src/hooks
         ${CMAKE_SOURCE_DIR}/src/enum
+        ${CMAKE_SOURCE_DIR}/src/staticdata
         ${LUA_SRC_DIR}
     )
     target_link_libraries(bg3se_test_tier0 PRIVATE lua_static "-framework Foundation")

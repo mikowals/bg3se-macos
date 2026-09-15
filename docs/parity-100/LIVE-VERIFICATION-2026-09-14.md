@@ -74,14 +74,100 @@ Tier 2 on the pre-fix and 00:07 dylibs (4 failures each):
   `Lifetime of StatsObject has expired`) appear identically in the pre-fix session (18 lines)
   and the final one — pre-existing on main, not introduced by this pass. They are the
   next triage list for #99/#98.
-- **Menu stall (PIDs 66819 and 88202):** twice, `-continueGame` did not auto-load and the
-  main menu ignored the harness watchdog's six in-process clicks, a CGEvent click, a
-  CGEvent Return and a direct `!click` (all logged as posted to `LSMTLView mouseDown:`).
-  Both stalls followed a **graceful quit** of the previous instance (harness `quit`); every
-  launch that followed a SIGTERM auto-loaded (launches 3, 5, the MCM retry). `modsettings.lsx`
-  was not rewritten (mtime 2026-08-04), so the load-order hypothesis is out. The compat
-  runner's built-in retry (kill + relaunch) is the workaround; root cause open, noted for
-  the harness backlog.
+- **Menu stall (PIDs 66819, 88202; Phase 6: 39113, 48071):** `-continueGame` did not
+  auto-load and the main menu ignored the harness watchdog's six in-process clicks, a
+  CGEvent click, a CGEvent Return and a direct `!click` (all logged as posted to
+  `LSMTLView mouseDown:`). The Phase 5 stalls followed a **graceful quit**; in Phase 6,
+  48071 stalled after a SIGTERM too, so the trigger is not simply the previous exit
+  path. The menu shows MCM's "Your load order is likely being reset" banner during a
+  stall. `modsettings.lsx` was not rewritten (mtime 2026-08-04). SIGTERM + relaunch
+  has loaded the save on the next attempt every time (Phase 6: 42508, 51375); the
+  compat runner's built-in retry does the same. Root cause open, harness backlog.
+
+## Phase 6 (2026-09-15 morning) — StaticData banks, #100 type, #88 probe
+
+Same game build; dylib rebuilt at 07:34 (type registration) and 07:44 (bank
+resolution). PIDs: 39113 and 48071 stalled at the main menu (see the pattern
+below), 42508 ran the diagnosis, 51375 ran the verification.
+
+### The TypeContext "manager" is a TypeId global, not a bank
+
+`Ext.StaticData.DumpStatus()` on 42508 (pre-fix path) showed what the metadata
+accessors were reading: `Feat count=0`, `Race count=0 ptr_array=0x116`,
+`Class count=24576 ptr_array=0x75`, `Origin count=1 ptr_array=0x10300000101`.
+The slot pointers line up with `nm` on the frozen binary:
+
+| TypeContext slot (runtime) | Unslid | Symbol |
+|---|---|---|
+| `eoc::FeatManager` `0x10cd9fc30` | `0x108927c30` | `ls::TypeId<eoc::FeatManager, ls::ImmutableDataHeadmaster>::m_TypeIndex` |
+| `eoc::CharacterCreationAppearanceVisualManager` `0x10cd9fac0` | `0x108927ac0` | `ls::TypeId<…AppearanceVisualManager, ls::ImmutableDataHeadmaster>::m_TypeIndex` |
+
+So every "HASHMAP" read since the Dec 2025 rewrite dereferenced neighbouring
+globals; on this build `GetAll()` returned `{}` for Feat/Race/God/Progression
+and garbage past the first entry elsewhere. Only `ActionResource`, captured by
+its Get<T> hook, held real entries, and its 0x80 stride was also wrong.
+`Ext.StaticData.HashLookup()` on 42508 resolved Feat/Race/God/FeatDescription
+through the headmaster table with correct first entries
+(`AbilityScoreIncrease d215b9ad-9753-4d74-8ff9-24bf1dce53d6`, `Selune`, `Shar`),
+which fixed the design: resolve every bank by type index, never read the slot.
+
+### Live strides (vtable-repeat walk of `Values.buf`)
+
+| Type | type_index | Count | Stride | Was configured |
+|------|-----------|-------|--------|----------------|
+| Feat | 37 | 41 | 0x128 | 0x128 |
+| Race | 54 | 156 | 0x168 | 0x200 |
+| Background | 7 | 22 | 0x70 | 0x80 |
+| Origin | 48 | 27 | 0x190 | 0x180 |
+| God | 38 | 24 | 0x60 | 0x60 |
+| Class | 23 | 70 | 0x110 | 0x100 |
+| Progression | 52 | 1004 | 0x148 | 0x200 |
+| ActionResource | (hook) | 87 | 0x60 | 0x80 |
+| FeatDescription | 36 | 41 | 0x60 | 0x80 |
+| CharacterCreationAppearanceVisual | 11 | 1315 | 0xA8 | 0xA8 (Windows-derived) |
+
+Post-init on 51375: `TypeContext resolved 10 slots`, `Hash lookup resolved 9
+banks` (ActionResource already held by its hook), `10/10 managers ready`; the
+runtime logged and overrode the two stale constants still in the table
+(Origin, Progression).
+
+### Value-level results (PID 51375, 07:44 build)
+
+- Every type: `GetCount == #GetAll`, zero nil GUIDs, v4 GUID nibble on 100% of
+  entries except Progression 1003/1004 and CharacterCreationAppearanceVisual
+  1314/1315. Named types resolve names on every entry (Race 156/156: `Humanoid`,
+  `Human`, `Elf`…; Class 70/70: `Barbarian`, `BerserkerPath`…; ActionResource
+  87/87: `ActionPoint`, `BonusActionPoint`, `ReactionActionPoint`).
+- **GUID text is canonical:** `Ext.StaticData.Get('Race',
+  '0eb594cb-8820-4be6-a58d-8be7a1a98fba')` → `Human`, and its `ResourceUUID`
+  round-trips to the same text. Before the fix the D/E groups were pair-swapped
+  and the lookup returned nil.
+- **CharacterCreationAppearanceVisual (#100):** 1315 entries; 1306 carry a
+  `RaceUUID` and all 1306 resolve through `Get('Race', …)` (Dragonborn 313,
+  Tiefling 182, HalfOrc 155, Human 137, Elf 132, Drow 132, HalfElf 127,
+  Githyanki 32, Dwarf 30, Halfling 28, Gnome 27, Gnome_Deep 11). `SlotName`
+  distribution: Hair 453, Private Parts 273, Head 232, DragonbornJaw 97,
+  DragonbornChin 96, DragonbornTop 96, Horns 60, Tail 8. Entry 1
+  `b24d2bbc-f40a-4c61-a8c5-6575d78be612`: `RootTemplate
+  7d427a86-81f0-418d-a32a-3b5676c86bfa`, `VisualResource
+  bf6ea9d0-db38-d44c-8cbd-12e6aca03044`, `DisplayName.Handle.Handle
+  hccae5707gc982g44c4g837dgbad2da43e03f` → `Ext.Loca.GetTranslatedString` →
+  **"Gale Hair"**. `Get(type, ResourceUUID)` round trip true. Unset
+  `ArgumentString` handles surface the engine sentinel
+  `ls::TranslatedStringRepository::s_HandleUnknown` verbatim.
+- **#88 probe:** `cmake -B build` reports `Performing Test
+  BG3SE_OBJCXX_TOOLCHAIN_OK - Success` on this machine (Xcode 26.2 SDK);
+  `bg3se-harness doctor` adds five `toolchain_*` rows, all passing here.
+
+### Release build (v0.44.0 dylib, 07:52 deploy, PID 60739)
+
+- `!identity` → `version:"0.44.0"`, `game_state:"Running"`, `session_init:"complete"`.
+- **Tier 1: 114/114. Tier 2: 112/114** — the same two failures as Phase 5
+  (`Stats.DamageEvents.PairedFiring` environmental, `Wave7.Stats.AddEnumerationValue`
+  gated). The four new StaticData tests pass, including `StaticData.AllTypesPopulated`
+  (every bank populated, `GetCount == #GetAll`, ≥ 99% v4 GUIDs per type).
+- Offline on the same commit: tier 0 141/141, harness pytest 368 passed.
+- PID 56508 (first launch of this build) stalled at the menu; SIGTERM + relaunch loaded.
 
 ## Process notes for the next session
 
