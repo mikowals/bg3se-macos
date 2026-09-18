@@ -3345,6 +3345,11 @@ void lua_ext_register_global_helpers(lua_State *L) {
     // Tier 2: Wave 3 end-to-end damage hook probe. The subscriptions are armed
     // when the Lua test definitions load so a real game tick can occur before
     // the synchronous test runner checks the paired counts.
+    //
+    // On 4.1.1.7398727 the hooked ProcessDealDamageFunctors has one direct
+    // caller, ProcessSpellFunctors: only damage from a cast (weapon attacks
+    // are casts) reaches it. Three BURNING applications dealt 10 HP live with
+    // zero BeforeDealDamage/DealDamage events while ExecuteFunctor fired.
     static const char *console_cmd_test_wave3_damage_events =
         "BG3SE_DamageEventProbe = BG3SE_DamageEventProbe or {before=0, deal=0}\n"
         "if BG3SE_DamageEventProbe.beforeId == nil then\n"
@@ -3363,7 +3368,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  AssertType(BG3SE_DamageEventProbe.dealId, 'number',\n"
         "    'DealDamage subscription')\n"
         "  assert(BG3SE_DamageEventProbe.before > 0,\n"
-        "    'no damage functor observed; apply BURNING to the host, allow one status tick, then rerun this test')\n"
+        "    'no damage functor observed; deal damage with a spell or weapon attack, then rerun this test (status ticks such as BURNING do not reach ProcessDealDamageFunctors)')\n"
         "  AssertEquals(BG3SE_DamageEventProbe.deal,\n"
         "    BG3SE_DamageEventProbe.before,\n"
         "    'BeforeDealDamage/DealDamage paired event counts')\n"
