@@ -101,7 +101,6 @@ static int g_TypeIdRetryCount = 0;
 // Address: 0x10898c000 + 0x968 = 0x10898c968
 // See ghidra/offsets/ENTITY_SYSTEM.md for discovery details
 // Re-derived 2026-07-28 via nm for game build 4.1.1.7209685 (was 0x10898c968)
-#define OFFSET_EOCCLIENT_SINGLETON_PTR 0x108994968
 
 // Offset of EntityWorld* within EoCClient struct
 // Windows BG3SE: EntityWorld at +0x1D0, PermissionsManager at +0x1D8
@@ -540,48 +539,28 @@ static void *read_eocserver_from_global(void) {
 
 // Direct memory read for EoCClient (similar to server)
 // Returns NULL if placeholder address is used or client not initialized
+extern uintptr_t g_RuntimeClientSingletonAddr;  // Ext.Entity.SetClientSingleton()
+
 static void *read_eocclient_from_global(void) {
     if (!g_MainBinaryBase) {
         LOG_ENTITY_DEBUG("Cannot read EoCClient: main binary base not set");
         return NULL;
     }
 
-    // Check if we have a valid address (not placeholder)
-    if (OFFSET_EOCCLIENT_SINGLETON_PTR == 0) {
-        // Try runtime-discovered address if set via Lua
-        extern uintptr_t g_RuntimeClientSingletonAddr;  // Set via Ext.Entity.SetClientSingleton()
-        if (g_RuntimeClientSingletonAddr == 0) {
-            LOG_ENTITY_DEBUG("EoCClient singleton address not discovered - use Ext.Entity.SetClientSingleton()");
-            return NULL;
-        }
-        // Use runtime-discovered address directly (already adjusted)
-        uintptr_t global_addr = g_RuntimeClientSingletonAddr;
-
-        vm_size_t data_size = sizeof(void*);
-        vm_offset_t data;
-        kern_return_t kr = vm_read(mach_task_self(), (vm_address_t)global_addr,
-                                   data_size, &data, (mach_msg_type_number_t*)&data_size);
-
-        if (kr != KERN_SUCCESS) {
-            LOG_ENTITY_DEBUG("Failed to read EoCClient from runtime address 0x%llx",
-                       (unsigned long long)global_addr);
-            return NULL;
-        }
-
-        void *eocclient = *(void **)data;
-        vm_deallocate(mach_task_self(), data, data_size);
-
-        if (eocclient && is_valid_pointer(eocclient)) {
-            LOG_ENTITY_DEBUG("Read EoCClient pointer from runtime address: %p", eocclient);
-            return eocclient;
-        }
+    // Per-version offset table first, then an address set from Lua via
+    // Ext.Entity.SetClientSingleton(). No hardcoded fallback: a slot from
+    // another build reads unrelated memory.
+    uintptr_t global_addr;
+    const VersionOffsets *off = offset_table_get();
+    if (off && off->eocclient_ptr) {
+        global_addr = (uintptr_t)g_MainBinaryBase + off->eocclient_ptr;
+    } else if (g_RuntimeClientSingletonAddr) {
+        global_addr = g_RuntimeClientSingletonAddr;
+    } else {
+        LOG_ENTITY_DEBUG("No EoCClient slot for this game version — "
+                         "use Ext.Entity.SetClientSingleton()");
         return NULL;
     }
-
-    // Calculate runtime address of ecl::EocClient::m_ptr
-    uintptr_t ghidra_base = GHIDRA_BASE_ADDRESS;
-    uintptr_t actual_base = (uintptr_t)g_MainBinaryBase;
-    uintptr_t global_addr = OFFSET_EOCCLIENT_SINGLETON_PTR - ghidra_base + actual_base;
 
     LOG_ENTITY_DEBUG("Reading EoCClient from global at 0x%llx", (unsigned long long)global_addr);
 
@@ -3035,8 +3014,11 @@ static int lua_entity_get_known_addresses(lua_State *L) {
 
     // Server addresses
     lua_newtable(L);
-    lua_pushinteger(L, (lua_Integer)OFFSET_EOCSERVER_SINGLETON_PTR);
-    lua_setfield(L, -2, "singletonPtrGhidra");
+    const VersionOffsets *off = offset_table_get();
+    if (off && off->eocserver_ptr) {
+        lua_pushinteger(L, (lua_Integer)(GHIDRA_BASE_ADDRESS + off->eocserver_ptr));
+        lua_setfield(L, -2, "singletonPtrGhidra");
+    }
     if (g_EoCServer) {
         lua_pushinteger(L, (lua_Integer)(uintptr_t)g_EoCServer);
         lua_setfield(L, -2, "singleton");
@@ -3051,8 +3033,10 @@ static int lua_entity_get_known_addresses(lua_State *L) {
 
     // Client addresses
     lua_newtable(L);
-    lua_pushinteger(L, (lua_Integer)OFFSET_EOCCLIENT_SINGLETON_PTR);
-    lua_setfield(L, -2, "singletonPtrGhidra");
+    if (off && off->eocclient_ptr) {
+        lua_pushinteger(L, (lua_Integer)(GHIDRA_BASE_ADDRESS + off->eocclient_ptr));
+        lua_setfield(L, -2, "singletonPtrGhidra");
+    }
     if (g_RuntimeClientSingletonAddr) {
         lua_pushinteger(L, (lua_Integer)g_RuntimeClientSingletonAddr);
         lua_setfield(L, -2, "singletonPtrRuntime");
