@@ -2241,6 +2241,10 @@ static int lua_entity_index(lua_State *L) {
     const ComponentLayoutDef *layout = strstr(key, "::")
         ? component_property_get_layout(key)
         : component_property_get_layout_by_short_name(key);
+    if (!layout && component_engine_name(key)) {
+        // Windows ExtComponentType name ("ServerCharacter", "ResistanceBoost").
+        layout = component_property_get_layout(component_engine_name(key));
+    }
     if (layout && layout->componentTypeIndex > 0) {
         // Look up component by TypeIndex
         void *component = component_lookup_by_index(
