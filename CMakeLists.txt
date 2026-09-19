@@ -250,6 +250,7 @@ add_library(bg3se SHARED
     src/entity/component_lookup.c
     src/entity/component_typeid.c
     src/entity/component_property.c
+    src/entity/stride_scan.c
     src/entity/entity_events.c
     src/entity/ecs_system_update.h
     src/entity/ecs_system_update.c
@@ -443,9 +444,12 @@ if(BUILD_TESTS)
         tests/tier0/test_enum_ext.c
         tests/tier0/test_osi_hook_abi.c
         tests/tier0/test_staticdata_layouts.c
+        tests/tier0/test_stride_scan.c
         tests/tier0/stub_logging.c
+        tests/tier0/stub_fixed_string.c
         src/core/safe_memory.c
         src/entity/guid_lookup.c
+        src/entity/stride_scan.c
         src/osiris/pattern_scan.c
         src/mod/mod_paths.c
         src/lua/lua_runtime.c

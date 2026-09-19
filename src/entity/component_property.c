@@ -1516,3 +1516,13 @@ void component_property_dump_layouts(void) {
                        layout->propertyCount);
     }
 }
+
+const ComponentLayoutDef *component_property_check_proxy_ex(lua_State *L, int index,
+                                                            void **outPtr) {
+    void *ud = luaL_testudata(L, index, COMPONENT_PROXY_METATABLE);
+    if (!ud) return NULL;
+    ComponentProxy *proxy = (ComponentProxy *)ud;
+    if (!lifetime_lua_is_valid(L, proxy->lifetime)) return NULL;
+    if (outPtr) *outPtr = proxy->componentPtr;
+    return proxy->layout;
+}
