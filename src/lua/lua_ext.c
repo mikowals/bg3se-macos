@@ -2710,7 +2710,8 @@ void lua_ext_register_global_helpers(lua_State *L) {
     // reload survival is live-verified manually per VALUELIST_INSERT.md)
     static const char *console_cmd_test_wave7_addenum =
         "BG3SE_AddTest(2, 'Wave7.Stats.AddEnumerationValue', function()\n"
-        "  local enumName = 'DamageType'\n"
+        "  -- ModifierValueLists name (as on Windows), not the C++ enum name\n"
+        "  local enumName = 'Damage Type'\n"
         "  local label = 'BG3SE_W7B1_' .. tostring(Ext.Utils.MonotonicTime())\n"
         "  assert(Ext.Stats.EnumLabelToIndex(enumName, label) == nil, 'label must be fresh')\n"
         "  local i = 0\n"

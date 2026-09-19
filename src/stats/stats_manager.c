@@ -726,7 +726,7 @@ bool stats_get_valuelist_registry_diagnostic(
 // registry-root bug before reaching Insert. Keep this pinned until the
 // Phase 5 live session proves the diagnostic + insert round trip on
 // 7398727, then move it with that evidence.
-#define VALUELIST_INSERT_VERIFIED_BUILD "4.1.1.7209685"
+#define VALUELIST_INSERT_VERIFIED_BUILD "4.1.1.7398727"
 
 typedef enum {
     STATS_VALUELIST_ERROR = -1,
