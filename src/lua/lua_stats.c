@@ -8,6 +8,7 @@
 #include "lua_context.h"
 #include "../stats/stats_manager.h"
 #include "../stats/prototype_managers.h"
+#include "../stats/functor_types.h"
 #include "../strings/fixed_string.h"
 #include "../entity/guid_lookup.h"
 #include "../enum/enum_registry.h"
@@ -63,6 +64,151 @@ static void push_stats_object(lua_State *L, StatsObjectPtr obj) {
 // Get StatsObject from userdata at stack index
 static LuaStatsObject* check_stats_object(lua_State *L, int idx) {
     return (LuaStatsObject*)luaL_checkudata(L, idx, STATS_OBJECT_METATABLE);
+}
+
+// ============================================================================
+// StatsFunctors attributes (SpellSuccess, TickFunctors, ...)
+//
+// stats::Object keeps them in HashMap<FixedString attribute, Array<FunctorGroup>>
+// at +0x28; FunctorGroup is {FixedString TextKey; Functors*} (16 bytes);
+// Functors keeps Array<Functor*> at +0x08 (size u32 at +0x14). Functor header,
+// read live on 4.1.1.7398727 across DealDamage, ApplyStatus, SurfaceChange,
+// ExecuteWeaponFunctors and RegainHitPoints functors (the TypeId matched the
+// Windows FunctorId, the PropertyContext the TARGET/AOE/GROUND name suffix):
+// ============================================================================
+
+#define STATS_OBJECT_FUNCTORS   0x28
+#define FUNCTOR_UNIQUE_NAME     0x08   // FixedString
+#define FUNCTOR_UUID            0x10   // Guid
+#define FUNCTOR_STATS_CONDITION 0x30   // int32 (-1 = none)
+#define FUNCTOR_PROPERTY_CTX    0x38   // uint64 PropertyContext flags
+#define FUNCTOR_STORY_ACTION_ID 0x40   // int32
+#define FUNCTOR_OBSERVER_TYPE   0x44   // uint8
+#define FUNCTOR_TYPE_ID         0x45   // uint8 FunctorId
+#define FUNCTOR_FLAGS           0x46   // uint8
+#define DEAL_DAMAGE_TYPE        0x47   // uint8 DamageType (DealDamageFunctor)
+
+// Windows stats::FunctorId, in value order.
+static const char *const k_functor_ids[] = {
+    "CustomDescription", "ApplyStatus", "SurfaceChange", "Resurrect", "Sabotage",
+    "Summon", "Force", "Douse", "SwapPlaces", "Pickup", "CreateSurface",
+    "CreateConeSurface", "RemoveStatus", "DealDamage", "ExecuteWeaponFunctors",
+    "RegainHitPoints", "TeleportSource", "SetStatusDuration", "UseSpell",
+    "UseActionResource", "UseAttack", "CreateExplosion", "BreakConcentration",
+    "ApplyEquipmentStatus", "RestoreResource", "Spawn", "Stabilize", "Unlock",
+    "ResetCombatTurn", "RemoveAuraByChildStatus", "SummonInInventory",
+    "SpawnInInventory", "RemoveUniqueStatus", "DisarmWeapon",
+    "DisarmAndStealWeapon", "SwitchDeathType", "TriggerRandomCast",
+    "GainTemporaryHitPoints", "FireProjectile", "ShortRest", "CreateZone",
+    "DoTeleport", "RegainTemporaryHitPoints", "RemoveStatusByLevel",
+    "SurfaceClearLayer", "Unsummon", "CreateWall", "Counterspell", "AdjustRoll",
+    "SpawnExtraProjectiles", "Kill", "TutorialEvent", "Drop", "ResetCooldowns",
+    "SetRoll", "SetDamageResistance", "SetReroll", "SetAdvantage",
+    "SetDisadvantage", "MaximizeRoll", "CameraWait", "ModifySpellCameraFocus",
+};
+
+static void push_functor(lua_State *L, uintptr_t f) {
+    uint32_t name = 0;
+    uint8_t guid[16];
+    int32_t cond = 0, story = 0;
+    uint64_t ctx = 0;
+    uint8_t tail[4] = {0};  // ObserverType, TypeId, Flags, (DealDamage) DamageType
+    lua_newtable(L);
+    if (safe_memory_read_u32(f + FUNCTOR_UNIQUE_NAME, &name)) {
+        const char *n = fixed_string_resolve(name);
+        lua_pushstring(L, n ? n : "");
+        lua_setfield(L, -2, "UniqueName");
+    }
+    if (safe_memory_read(f + FUNCTOR_UUID, guid, sizeof(guid))) {
+        char buf[40];
+        guid_to_string((const Guid *)guid, buf);
+        lua_pushstring(L, buf);
+        lua_setfield(L, -2, "FunctorUuid");
+    }
+    if (safe_memory_read_i32(f + FUNCTOR_STATS_CONDITION, &cond)) {
+        lua_pushinteger(L, cond);
+        lua_setfield(L, -2, "StatsConditions");
+    }
+    if (safe_memory_read_u64(f + FUNCTOR_PROPERTY_CTX, &ctx)) {
+        lua_pushinteger(L, (lua_Integer)ctx);
+        lua_setfield(L, -2, "PropertyContext");
+    }
+    if (safe_memory_read_i32(f + FUNCTOR_STORY_ACTION_ID, &story)) {
+        lua_pushinteger(L, story);
+        lua_setfield(L, -2, "StoryActionId");
+    }
+    if (!safe_memory_read(f + FUNCTOR_OBSERVER_TYPE, tail, sizeof(tail))) return;
+    lua_pushinteger(L, tail[0]);
+    lua_setfield(L, -2, "ObserverType");
+    if (tail[1] < sizeof(k_functor_ids) / sizeof(*k_functor_ids)) {
+        lua_pushstring(L, k_functor_ids[tail[1]]);
+    } else {
+        lua_pushinteger(L, tail[1]);
+    }
+    lua_setfield(L, -2, "TypeId");
+    lua_pushinteger(L, tail[2]);
+    lua_setfield(L, -2, "Flags");
+    if (tail[1] == FUNCTOR_ID_DEAL_DAMAGE) {
+        EnumTypeInfo *dt = enum_registry_find_by_name("DamageType");
+        const char *label = dt ? enum_find_label(dt->registry_index, tail[3]) : NULL;
+        if (label) lua_pushstring(L, label); else lua_pushinteger(L, tail[3]);
+        lua_setfield(L, -2, "DamageType");
+    }
+}
+
+// Pushes the attribute's { {TextKey, Functors = {functor...}}, ... } and
+// returns true, or returns false (nothing pushed) when the object has no
+// functors under that attribute name.
+static bool push_stats_functors(lua_State *L, void *obj, const char *attr) {
+    uintptr_t map = (uintptr_t)obj + STATS_OBJECT_FUNCTORS;
+    uint64_t keys = 0, values = 0;
+    uint32_t count = 0;
+    if (!obj || !safe_memory_read_u64(map + 0x20, &keys) ||
+        !safe_memory_read_u32(map + 0x2C, &count) ||
+        !safe_memory_read_u64(map + 0x30, &values) || !keys || !values || count > 256) {
+        return false;
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t key = 0;
+        const char *name = NULL;
+        if (!safe_memory_read_u32(keys + i * 4, &key) ||
+            !(name = fixed_string_resolve(key)) || strcmp(name, attr) != 0) {
+            continue;
+        }
+        uint64_t groups = 0;
+        uint32_t ngroups = 0;
+        if (!safe_memory_read_u64(values + i * 16, &groups) ||
+            !safe_memory_read_u32(values + i * 16 + 0xC, &ngroups) || ngroups > 64) {
+            return false;
+        }
+        lua_createtable(L, (int)ngroups, 0);
+        for (uint32_t g = 0; g < ngroups; g++) {
+            uint32_t text_key = 0;
+            uint64_t set = 0, list = 0;
+            uint32_t nf = 0;
+            lua_newtable(L);
+            if (safe_memory_read_u32(groups + g * 16, &text_key)) {
+                const char *tk = fixed_string_resolve(text_key);
+                lua_pushstring(L, tk ? tk : "");
+                lua_setfield(L, -2, "TextKey");
+            }
+            lua_newtable(L);
+            if (safe_memory_read_u64(groups + g * 16 + 8, &set) && set &&
+                safe_memory_read_u64(set + 0x08, &list) &&
+                safe_memory_read_u32(set + 0x14, &nf) && list && nf <= 256) {
+                for (uint32_t j = 0; j < nf; j++) {
+                    uint64_t f = 0;
+                    if (!safe_memory_read_u64(list + j * 8, &f) || !f) continue;
+                    push_functor(L, (uintptr_t)f);
+                    lua_rawseti(L, -2, (lua_Integer)j + 1);
+                }
+            }
+            lua_setfield(L, -2, "Functors");
+            lua_rawseti(L, -2, (lua_Integer)g + 1);
+        }
+        return true;
+    }
+    return false;
 }
 
 // ============================================================================
@@ -246,9 +392,10 @@ static int lua_stats_object_index(lua_State *L) {
             case STATS_VALUE_UNSUPPORTED:
             case STATS_VALUE_NONE:
             default:
-                // RollConditions, StatsFunctors, Requirements (and a failed
-                // pool read) are not decoded. Reading them as FixedString
-                // indices returned unrelated strings; return nil instead.
+                // StatsFunctors attributes live in the object's functor map.
+                // RollConditions and Requirements (and a failed pool read) are
+                // not decoded: nil rather than an unrelated FixedString.
+                if (push_stats_functors(L, ud->obj, key)) return 1;
                 lua_pushnil(L);
                 return 1;
         }
