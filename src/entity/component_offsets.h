@@ -519,24 +519,26 @@ static const ComponentLayoutDef g_TurnBasedComponent_Layout = {
 // ============================================================================
 
 static const ComponentPropertyDef g_WeaponComponent_Properties[] = {
-    // LegacyRefMap<AbilityId, Array<RollDefinition>> Rolls at 0x00 (complex, skip)
-    // LegacyRefMap<AbilityId, Array<RollDefinition>> Rolls2 at 0x?? (complex, skip)
-    // Estimate: 2 RefMaps ~= 0x30 each = 0x60, then floats
-    { "WeaponRange",      0x60, FIELD_TYPE_FLOAT,  0, true },
-    { "DamageRange",      0x64, FIELD_TYPE_FLOAT,  0, true },
-    // WeaponFunctors* at 0x68 (pointer, skip)
-    { "WeaponProperties", 0x70, FIELD_TYPE_UINT32, 0, true },  // Flags
-    { "WeaponGroup",      0x74, FIELD_TYPE_UINT8,  0, true },
-    { "Ability",          0x75, FIELD_TYPE_UINT8,  0, true },  // AbilityId enum
-    // Array<StatsExpressionWithMetadata> DamageValues after
-    // DiceSizeId at end
+    // Field map from ecs::sync::Deserialize<eoc::WeaponComponent, FieldMeta...>
+    // (Ghidra on 4.1.1.7209685): two LegacyRefMaps (0x10 each on
+    // ARM64) at 0x00/0x10, then m_Range 0x20, m_LongRange 0x24, functors* 0x28,
+    // m_Properties 0x30, m_WeaponGroup 0x34, m_BaseDamageType 0x35, attack
+    // bonuses 0x38, dice 0x48/0x49; AddComponent allocates 0x50. The old table
+    // put every field 0x40 higher, past the end of the component.
+    // Live on 4.1.1.7398727: longbows read 18/30, a halberd 2.5 (reach), a
+    // mace 1.5; 4 of 8 party weapons read 0 here -- unexplained.
+    { "WeaponRange",      0x20, FIELD_TYPE_FLOAT,  0, true },  // m_Range
+    { "DamageRange",      0x24, FIELD_TYPE_FLOAT,  0, true },  // m_LongRange
+    { "WeaponProperties", 0x30, FIELD_TYPE_UINT32, 0, true },  // m_Properties (flags)
+    { "WeaponGroup",      0x34, FIELD_TYPE_UINT8,  0, true },  // m_WeaponGroup
+    { "Ability",          0x35, FIELD_TYPE_UINT8,  0, true },  // m_BaseDamageType (legacy name)
 };
 
 static const ComponentLayoutDef g_WeaponComponent_Layout = {
     .componentName = "eoc::WeaponComponent",
     .shortName = "Weapon",
     .componentTypeIndex = 0,
-    .componentSize = 0x90,  // Estimate
+    .componentSize = 0x50,  // AddComponent<eoc::WeaponComponent> allocation
     .properties = g_WeaponComponent_Properties,
     .propertyCount = sizeof(g_WeaponComponent_Properties) / sizeof(g_WeaponComponent_Properties[0]),
 };
@@ -545,13 +547,16 @@ static const ComponentLayoutDef g_WeaponComponent_Layout = {
 // SpellBookComponent (eoc::spell::BookComponent)
 // From: BG3Extender/GameDefinitions/Components/Spell.h:217-223
 // Array<SpellData> layout: buf_(0x00), capacity_(0x08), size_(0x0C)
-// SpellData estimated size: ~88 bytes (contains SpellId, Guid, etc.)
+// SpellData stride 0x68 on ARM64 (the Windows header's 88 is x64). Live on
+// 4.1.1.7398727: at 0x68 all of the host's first 10 elements resolve their
+// prototype FixedString to a spell name (Projectile_Jump, Target_Dip, ...);
+// 88 resolves only element 0. Element [0] reads correctly at any stride.
 // ============================================================================
 
 static const ComponentPropertyDef g_SpellBookComponent_Properties[] = {
     { "Entity",     0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true, ELEM_TYPE_UNKNOWN, 0 },
     // Array<SpellData> Spells at 0x08 - dynamic array with iteration support
-    { "Spells",     0x08, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_SPELL_DATA, 88 },
+    { "Spells",     0x08, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_SPELL_DATA, 0x68 },
     // Also expose count for convenience
     { "SpellCount", 0x14, FIELD_TYPE_UINT32, 0, true, ELEM_TYPE_UNKNOWN, 0 },  // Array.size_ at 0x08+0x0C
 };
@@ -574,7 +579,10 @@ static const ComponentLayoutDef g_SpellBookComponent_Layout = {
 static const ComponentPropertyDef g_StatusContainerComponent_Properties[] = {
     // HashMap<EntityHandle, FixedString> Statuses at 0x00
     // HashMap layout: HashSet (0x40) contains count at offset ~0x18
-    { "StatusCount", 0x18, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
+    // HashMap size_ at +0x2C; +0x18 is the bucket count. Live on 4.1.1.7398727,
+    // four party members: +0x18/+0x2C = 32/21, 8/7, 16/9, 256/175 (statuses),
+    // 8/8, 16/10, 16/10, 16/9 (resources): +0x18 always a power of two >= +0x2C.
+    { "StatusCount", 0x2C, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
 };
 
 static const ComponentLayoutDef g_StatusContainerComponent_Layout = {
@@ -615,7 +623,10 @@ static const ComponentLayoutDef g_InventoryContainerComponent_Layout = {
 
 static const ComponentPropertyDef g_ActionResourcesComponent_Properties[] = {
     // HashMap<Guid, Array<ActionResourceEntry>> Resources at 0x00
-    { "ResourceTypeCount", 0x18, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
+    // HashMap size_ at +0x2C; +0x18 is the bucket count. Live on 4.1.1.7398727,
+    // four party members: +0x18/+0x2C = 32/21, 8/7, 16/9, 256/175 (statuses),
+    // 8/8, 16/10, 16/10, 16/9 (resources): +0x18 always a power of two >= +0x2C.
+    { "ResourceTypeCount", 0x2C, FIELD_TYPE_UINT32, 0, true },  // HashMap element count
 };
 
 static const ComponentLayoutDef g_ActionResourcesComponent_Layout = {
