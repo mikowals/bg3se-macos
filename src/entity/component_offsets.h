@@ -2286,7 +2286,7 @@ static const ComponentLayoutDef g_ClientPaperdollComponent_Layout = {
 static const ComponentPropertyDef g_eoc_ACOverrideFormulaBoostComponent_Properties[] = {
     { "AC", 0x00, FIELD_TYPE_INT32, 0, false },
     { "field_4", 0x04, FIELD_TYPE_BOOL, 0, false },
-    { "AddAbilityModifiers", 0x08, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "AddAbilityModifiers", 0x08, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 1 },
 };
 static const ComponentLayoutDef g_eoc_ACOverrideFormulaBoostComponent_Layout = {
     .componentName = "eoc::ACOverrideFormulaBoostComponent",
@@ -3424,7 +3424,7 @@ static const ComponentLayoutDef g_eoc_NullifyAbilityBoostComponent_Layout = {
 // eoc::ObjectInteractionComponent - 16 bytes (0x10)
 // Source: ObjectInteractionComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ObjectInteractionComponent_Properties[] = {
-    { "Interactions", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Interactions", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_ENTITY_HANDLE, 8 },
 };
 static const ComponentLayoutDef g_eoc_ObjectInteractionComponent_Layout = {
     .componentName = "eoc::ObjectInteractionComponent",
@@ -3719,7 +3719,7 @@ static const ComponentLayoutDef g_eoc_StealthComponent_Layout = {
 // eoc::TurnOrderComponent - 80 bytes (0x50)
 // Source: TurnOrderComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_TurnOrderComponent_Properties[] = {
-    { "TurnOrderIndices", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "TurnOrderIndices", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 8 },
     { "TurnOrderIndices2", 0x10, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
     { "field_40", 0x20, FIELD_TYPE_INT32, 0, false },
     { "field_44", 0x24, FIELD_TYPE_INT32, 0, false },
@@ -3752,7 +3752,7 @@ static const ComponentLayoutDef g_eoc_UnlockInterruptBoostComponent_Layout = {
 // eoc::UseBoostsComponent - 16 bytes (0x10)
 // Source: UseBoostsComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_UseBoostsComponent_Properties[] = {
-    { "Boosts", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Boosts", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 12 },
 };
 static const ComponentLayoutDef g_eoc_UseBoostsComponent_Layout = {
     .componentName = "eoc::UseBoostsComponent",
@@ -3766,12 +3766,17 @@ static const ComponentLayoutDef g_eoc_UseBoostsComponent_Layout = {
 // eoc::UseComponent - 80 bytes (0x50)
 // Source: UseComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_UseComponent_Properties[] = {
-    { "Requirements", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Requirements", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 32 },
     { "Charges", 0x10, FIELD_TYPE_INT32, 0, false },
     { "MaxCharges", 0x14, FIELD_TYPE_INT32, 0, false },
-    { "Boosts", 0x18, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
-    { "BoostsOnEquipMainHand", 0x28, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
-    { "BoostsOnEquipOffHand", 0x38, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    // Array<eoc::BoostDescription> (0x0C) at 0x20/0x30/0x40 --
+    // Ghidra (Deserialize<eoc::UseComponent> reads base+0x20/+0x30/+0x40).
+    // Live on 7398727, four party weapons: counts at +0x20/+0x30 equal their
+    // stats' Boosts / BoostsOnEquipMainHand entries (4/1, 1/1, 0/3, 0/2); the
+    // old +0x18/+0x28 read a non-pointer (0xffffffff00000001) as the buffer.
+    { "Boosts", 0x20, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 0x0C },
+    { "BoostsOnEquipMainHand", 0x30, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 0x0C },
+    { "BoostsOnEquipOffHand", 0x40, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 0x0C },
 };
 static const ComponentLayoutDef g_eoc_UseComponent_Layout = {
     .componentName = "eoc::UseComponent",
@@ -3799,7 +3804,7 @@ static const ComponentLayoutDef g_eoc_VoiceComponent_Layout = {
 // eoc::VoiceTagComponent - 16 bytes (0x10)
 // Source: VoiceTagComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_VoiceTagComponent_Properties[] = {
-    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_GUID, 16 },
 };
 static const ComponentLayoutDef g_eoc_VoiceTagComponent_Layout = {
     .componentName = "eoc::VoiceTagComponent",
@@ -3860,7 +3865,7 @@ static const ComponentLayoutDef g_eoc_WeaponDamageBoostComponent_Layout = {
 // eoc::WeaponDamageResistanceBoostComponent - 16 bytes (0x10)
 // Source: WeaponDamageResistanceBoostComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_WeaponDamageResistanceBoostComponent_Properties[] = {
-    { "DamageTypes", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "DamageTypes", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 1 },
 };
 static const ComponentLayoutDef g_eoc_WeaponDamageResistanceBoostComponent_Layout = {
     .componentName = "eoc::WeaponDamageResistanceBoostComponent",
@@ -3946,7 +3951,7 @@ static const ComponentLayoutDef g_eoc_WeightCategoryBoostComponent_Layout = {
 // eoc::action::ActionUseConditionsComponent - 16 bytes (0x10)
 // Source: ActionUseConditionsComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_ActionUseConditionsComponent_Properties[] = {
-    { "Conditions", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Conditions", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 4 },
 };
 static const ComponentLayoutDef g_eoc_ActionUseConditionsComponent_Layout = {
     .componentName = "eoc::action::ActionUseConditionsComponent",
@@ -4018,7 +4023,7 @@ static const ComponentLayoutDef g_eoc_StartingDateComponent_Layout = {
 // eoc::character_creation::LevelUpComponent - 16 bytes (0x10)
 // Source: LevelUpComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_LevelUpComponent_Properties[] = {
-    { "LevelUps", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "LevelUps", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 224 },
 };
 static const ComponentLayoutDef g_eoc_LevelUpComponent_Layout = {
     .componentName = "eoc::character_creation::LevelUpComponent",
@@ -4064,7 +4069,7 @@ static const ComponentLayoutDef g_eoc_StateComponent_Layout = {
 // eoc::combat::IsThreatenedComponent - 16 bytes (0x10)
 // Source: IsThreatenedComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_IsThreatenedComponent_Properties[] = {
-    { "ThreatenedBy", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "ThreatenedBy", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_ENTITY_HANDLE, 8 },
 };
 static const ComponentLayoutDef g_eoc_IsThreatenedComponent_Layout = {
     .componentName = "eoc::combat::IsThreatenedComponent",
@@ -4120,7 +4125,7 @@ static const ComponentLayoutDef g_eoc_ZoneBlockReasonComponent_Layout = {
 // eoc::god::TagComponent - 16 bytes (0x10)
 // Source: GodTagComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_TagComponent_Properties[] = {
-    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_GUID, 16 },
 };
 static const ComponentLayoutDef g_eoc_TagComponent_Layout = {
     .componentName = "eoc::god::TagComponent",
@@ -4282,7 +4287,7 @@ static const ComponentPropertyDef g_eoc_LockComponent_Properties[] = {
     { "Key_M", 0x00, FIELD_TYPE_FIXEDSTRING, 0, false },
     { "LockDC", 0x04, FIELD_TYPE_INT32, 0, false },
     { "field_8", 0x08, FIELD_TYPE_GUID, 0, false },
-    { "field_18", 0x18, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "field_18", 0x18, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_GUID, 16 },
 };
 static const ComponentLayoutDef g_eoc_LockComponent_Layout = {
     .componentName = "eoc::lock::LockComponent",
@@ -4311,7 +4316,7 @@ static const ComponentLayoutDef g_eoc_PickUpRequestComponent_Layout = {
 // eoc::spell::AddedSpellsComponent - 16 bytes (0x10)
 // Source: AddedSpellsComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_AddedSpellsComponent_Properties[] = {
-    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_SPELL_META, 96 },
 };
 static const ComponentLayoutDef g_eoc_AddedSpellsComponent_Layout = {
     .componentName = "eoc::spell::AddedSpellsComponent",
@@ -4325,7 +4330,7 @@ static const ComponentLayoutDef g_eoc_AddedSpellsComponent_Layout = {
 // eoc::spell::BookCooldownsComponent - 16 bytes (0x10)
 // Source: SpellBookCooldownsComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_BookCooldownsComponent_Properties[] = {
-    { "Cooldowns", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Cooldowns", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 80 },
 };
 static const ComponentLayoutDef g_eoc_BookCooldownsComponent_Layout = {
     .componentName = "eoc::spell::BookCooldownsComponent",
@@ -4339,7 +4344,7 @@ static const ComponentLayoutDef g_eoc_BookCooldownsComponent_Layout = {
 // eoc::spell::CCPrepareSpellComponent - 16 bytes (0x10)
 // Source: CCPrepareSpellComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CCPrepareSpellComponent_Properties[] = {
-    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 48 },
 };
 static const ComponentLayoutDef g_eoc_CCPrepareSpellComponent_Layout = {
     .componentName = "eoc::spell::CCPrepareSpellComponent",
@@ -4353,7 +4358,7 @@ static const ComponentLayoutDef g_eoc_CCPrepareSpellComponent_Layout = {
 // eoc::spell::PlayerPrepareSpellComponent - 24 bytes (0x18)
 // Source: PlayerPrepareSpellComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_PlayerPrepareSpellComponent_Properties[] = {
-    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Spells", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 48 },
 };
 static const ComponentLayoutDef g_eoc_PlayerPrepareSpellComponent_Layout = {
     .componentName = "eoc::spell::PlayerPrepareSpellComponent",
@@ -4484,7 +4489,7 @@ static const ComponentLayoutDef g_esv_AIHintAreaTrigger_Layout = {
 // esv::ActivationGroupContainerComponent - 16 bytes (0x10)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_ActivationGroupContainerComponent_Properties[] = {
-    { "Groups", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },  // Array<ActivationGroupData>
+    { "Groups", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 8 },  // Array<ActivationGroupData>
 };
 static const ComponentLayoutDef g_esv_ActivationGroupContainerComponent_Layout = {
     .componentName = "esv::ActivationGroupContainerComponent",
@@ -4640,7 +4645,7 @@ static const ComponentLayoutDef g_esv_BaseStatsComponent_Layout = {
 // esv::BaseWeaponComponent - 16 bytes (0x10)
 // Source: ServerData.h
 static const ComponentPropertyDef g_esv_BaseWeaponComponent_Properties[] = {
-    { "DamageList", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },  // Array<BaseWeaponDamage>
+    { "DamageList", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 20 },  // Array<BaseWeaponDamage>
 };
 static const ComponentLayoutDef g_esv_BaseWeaponComponent_Layout = {
     .componentName = "esv::BaseWeaponComponent",
@@ -4837,7 +4842,7 @@ static const ComponentLayoutDef g_esv_CustomStatsComponent_Layout = {
 
 // esv::DisplayNameListComponent - 40 bytes (0x28)
 static const ComponentPropertyDef g_esv_DisplayNameListComponent_Properties[] = {
-    { "Names", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Names", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 40 },
 };
 static const ComponentLayoutDef g_esv_DisplayNameListComponent_Layout = {
     .componentName = "esv::DisplayNameListComponent",
@@ -4992,7 +4997,7 @@ static const ComponentLayoutDef g_esv_HealthComponent_Layout = {
 
 // esv::IconListComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_IconListComponent_Properties[] = {
-    { "Icons", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Icons", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 8 },
 };
 static const ComponentLayoutDef g_esv_IconListComponent_Layout = {
     .componentName = "esv::IconListComponent",
@@ -5229,7 +5234,7 @@ static const ComponentLayoutDef g_esv_OriginalTemplateComponent_Layout = {
 
 // esv::OsirisPingRequestSingletonComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_OsirisPingRequestSingletonComponent_Properties[] = {
-    { "Requests", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Requests", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 32 },
 };
 static const ComponentLayoutDef g_esv_OsirisPingRequestSingletonComponent_Layout = {
     .componentName = "esv::OsirisPingRequestSingletonComponent",
@@ -5255,7 +5260,7 @@ static const ComponentLayoutDef g_esv_PartyMemberComponent_Layout = {
 
 // esv::PingRequestSingletonComponent - 16 bytes (0x10)
 static const ComponentPropertyDef g_esv_PingRequestSingletonComponent_Properties[] = {
-    { "Requests", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Requests", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 32 },
 };
 static const ComponentLayoutDef g_esv_PingRequestSingletonComponent_Layout = {
     .componentName = "esv::PingRequestSingletonComponent",
@@ -5480,7 +5485,7 @@ static const ComponentLayoutDef g_esv_SummonContainerComponent_Layout = {
 
 // esv::SurfacePathInfluencesComponent - 24 bytes (0x18)
 static const ComponentPropertyDef g_esv_SurfacePathInfluencesComponent_Properties[] = {
-    { "PathInfluences", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "PathInfluences", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 8 },
 };
 static const ComponentLayoutDef g_esv_SurfacePathInfluencesComponent_Layout = {
     .componentName = "esv::SurfacePathInfluencesComponent",
@@ -5748,7 +5753,7 @@ static const ComponentLayoutDef g_esv_inventory_ShapeshiftAddedEquipmentComponen
 // esv::inventory::ShapeshiftEquipmentHistoryComponent - 16 bytes (0x10)
 // Source: Inventory.h
 static const ComponentPropertyDef g_esv_inventory_ShapeshiftEquipmentHistoryComponent_Properties[] = {
-    { "History", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "History", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_GUID, 16 },
 };
 static const ComponentLayoutDef g_esv_inventory_ShapeshiftEquipmentHistoryComponent_Layout = {
     .componentName = "esv::inventory::ShapeshiftEquipmentHistoryComponent",
@@ -7743,7 +7748,7 @@ static const ComponentLayoutDef g_ls_AnimationSetUpdateRequest_Layout = {
 // ls::animation::DynamicAnimationTagsComponent - 16 bytes (0x10)
 // Source: Visual.h, COMPONENT_SIZES_LS_ANIMATION.md
 static const ComponentPropertyDef g_ls_DynamicAnimationTags_Properties[] = {
-    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Tags", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 24 },
 };
 static const ComponentLayoutDef g_ls_DynamicAnimationTags_Layout = {
     .componentName = "ls::animation::DynamicAnimationTagsComponent",
@@ -7757,7 +7762,7 @@ static const ComponentLayoutDef g_ls_DynamicAnimationTags_Layout = {
 // ls::animation::LoadAnimationSetGameplayRequestOneFrameComponent - 16 bytes (0x10)
 // Source: Visual.h, COMPONENT_SIZES_LS_ANIMATION.md
 static const ComponentPropertyDef g_ls_LoadAnimationSetGameplayRequestOneFrame_Properties[] = {
-    { "Animations", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Animations", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 16 },
 };
 static const ComponentLayoutDef g_ls_LoadAnimationSetGameplayRequestOneFrame_Layout = {
     .componentName = "ls::animation::LoadAnimationSetGameplayRequestOneFrameComponent",
@@ -7785,7 +7790,7 @@ static const ComponentLayoutDef g_ls_RemoveAnimationSetsGameplayRequestOneFrame_
 // ls::animation::TemplateAnimationSetOverrideComponent - 16 bytes (0x10)
 // Source: Visual.h, COMPONENT_SIZES_LS_ANIMATION.md
 static const ComponentPropertyDef g_ls_TemplateAnimationSetOverride_Properties[] = {
-    { "Overrides", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Overrides", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 12 },
 };
 static const ComponentLayoutDef g_ls_TemplateAnimationSetOverride_Layout = {
     .componentName = "ls::animation::TemplateAnimationSetOverrideComponent",
@@ -7841,7 +7846,7 @@ static const ComponentLayoutDef g_ls_SceneStage_Layout = {
 // ls::trigger::IsInsideOfComponent - 16 bytes (0x10)
 // Source: COMPONENT_SIZES_LS_MISC.md
 static const ComponentPropertyDef g_ls_IsInsideOf_Properties[] = {
-    { "Triggers", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
+    { "Triggers", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_GUID, 16 },
 };
 static const ComponentLayoutDef g_ls_IsInsideOf_Layout = {
     .componentName = "ls::trigger::IsInsideOfComponent",

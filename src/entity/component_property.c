@@ -23,6 +23,7 @@
 #include "../core/safe_memory.h"
 #include "../core/logging.h"
 #include "../lifetime/lifetime.h"
+#include "../strings/fixed_string.h"
 
 #include <limits.h>
 #include <math.h>
@@ -43,6 +44,22 @@ static void push_guid_at(lua_State *L, uintptr_t addr) {
         lua_pushstring(L, buf);
     } else {
         lua_pushnil(L);
+    }
+}
+
+// Push a FixedString index as its string (Windows semantics): the null index
+// is "", an index that resolves is its text, and one that does not stays the
+// raw integer rather than being lost.
+static void push_fixed_string_index(lua_State *L, uint32_t val) {
+    if (val == FS_NULL_INDEX) {
+        lua_pushstring(L, "");
+        return;
+    }
+    const char *str = fixed_string_resolve(val);
+    if (str) {
+        lua_pushstring(L, str);
+    } else {
+        lua_pushinteger(L, val);
     }
 }
 
@@ -409,11 +426,10 @@ int component_property_read_def(lua_State *L, void *componentPtr,
         }
 
         case FIELD_TYPE_FIXEDSTRING: {
-            // FixedString is a uint32_t index into GlobalStringTable
-            // For now, return the raw index - full resolution requires GST access
+            // FixedString is a uint32_t index into the GlobalStringTable.
             uint32_t val = 0;
             if (safe_memory_read_u32((mach_vm_address_t)addr, &val)) {
-                lua_pushinteger(L, val);
+                push_fixed_string_index(L, val);
             } else {
                 lua_pushnil(L);
             }
@@ -1037,7 +1053,7 @@ static int array_proxy_push_element(lua_State *L, ArrayProxy *proxy, void *buf, 
         case ELEM_TYPE_FIXED_STRING: {
             uint32_t val = 0;
             if (safe_memory_read_u32((mach_vm_address_t)elemAddr, &val)) {
-                lua_pushinteger(L, val);
+                push_fixed_string_index(L, val);
             } else {
                 lua_pushnil(L);
             }
