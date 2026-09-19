@@ -1525,23 +1525,24 @@ static bool osi_db_resolve(void *def, void **outNode, void **outDb,
     return true;
 }
 
-/* Locate the value array of a stored fact. CTuple (inline at listnode+0x10)
- * is a COsiSOOList<COsiTypedValue,8>: size @ +0x80, cap @ +0x84; values are
- * stored INLINE at the tuple base when cap < 9, else the tuple base holds a
- * heap pointer. Returns 0 on read failure. */
+/* Locate the value array of a stored fact. A database's Facts list holds
+ * TupleVec {COsiTypedValue *Values @ +0x00; uint64 Size @ +0x08} inline at
+ * listnode+0x10 (Windows BG3SE: List<TupleVec> Facts). This was read as the
+ * inline COsiSOOList used by search tuples (size @ +0x80, cap @ +0x84); on
+ * 4.1.1.7398727 that decoded the Values pointer itself as an INTEGER column,
+ * so every Osi.DB_*:Get() row came back as a number (live-verified: a
+ * 1-column DB node reads Values=heap ptr, Size=1; the values carry typeId
+ * 0x05/0x0b at +0x08). Returns 0 on read failure. */
 static mach_vm_address_t osi_db_tuple_values(mach_vm_address_t listNode,
                                              uint32_t *outSize) {
     mach_vm_address_t tuple = listNode + 0x10;
-    uint32_t tsize = 0, tcap = 0;
-    safe_memory_read_u32(tuple + 0x80, &tsize);
-    safe_memory_read_u32(tuple + 0x84, &tcap);
-    *outSize = tsize;
-    if (tcap >= 9) {
-        void *heap = NULL;
-        safe_memory_read_pointer(tuple, &heap);
-        return (mach_vm_address_t)heap;
-    }
-    return tuple;
+    void *values = NULL;
+    uint64_t size = 0;
+    *outSize = 0;
+    if (!safe_memory_read_pointer(tuple, &values) || !values) return 0;
+    if (!safe_memory_read_u64(tuple + 0x08, &size) || size > 32) return 0;
+    *outSize = (uint32_t)size;
+    return (mach_vm_address_t)values;
 }
 
 /* Compare Lua stack slots 2..(1+nfilter) against a stored value array.
