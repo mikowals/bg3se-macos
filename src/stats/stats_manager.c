@@ -269,6 +269,7 @@ static void* get_objects_manager(void);
 static int get_manager_count(void *manager);
 static void* get_manager_element(void *manager, int index);
 static const char* read_fixed_string(void *addr);
+static int32_t fixedstrings_pool_index(const char *value);
 
 // ============================================================================
 // Initialization
@@ -1970,9 +1971,9 @@ bool stats_set_string(StatsObjectPtr obj, const char *prop, const char *value) {
     void *write_addr = get_property_write_address(obj, prop, &prop_index, "stats_set_string");
     if (!write_addr) return false;
 
-    int32_t pool_index = find_fixedstring_pool_index(value);
+    int32_t pool_index = fixedstrings_pool_index(value);
     if (pool_index < 0) {
-        LOG_STATS_DEBUG("stats_set_string: value '%s' not found in FixedStrings pool", value);
+        LOG_STATS_DEBUG("stats_set_string: '%s' not in the FixedStrings pool and could not be added", value);
         return false;
     }
 
@@ -2048,6 +2049,34 @@ static int32_t floats_pool_index(float value) {
     return (int32_t)size;
 }
 
+// Index of `value` in the FixedStrings pool, interning it and appending it
+// when absent and the pool's existing capacity allows (Windows
+// RPGStats::GetOrCreateFixedString; no reallocation of the game's buffer).
+static int32_t fixedstrings_pool_index(const char *value) {
+    if (value && value[0] == '\0') return 0;  // entry 0 is the null FixedString
+    int32_t found = find_fixedstring_pool_index(value);
+    if (found >= 0) return found;
+    if (!value || !fixed_string_intern_ready()) return -1;
+
+    void *rpgstats = stats_manager_get_raw();
+    if (!rpgstats) return -1;
+    char *arr = (char*)rpgstats + RPGSTATS_OFFSET_FIXEDSTRINGS;
+    void *buf = NULL;
+    uint32_t cap = 0, size = 0;
+    if (!safe_read_ptr(arr, &buf) || !buf ||
+        !safe_read_u32(arr + 0x08, &cap) || !safe_read_u32(arr + 0x0C, &size) ||
+        size >= cap) {
+        return -1;
+    }
+    uint32_t fs = fixed_string_intern(value, -1);
+    if (fs == FS_NULL_INDEX) return -1;
+    if (!safe_write_i32((char*)buf + size * sizeof(uint32_t), (int32_t)fs) ||
+        !safe_write_i32(arr + 0x0C, (int32_t)(size + 1))) {
+        return -1;
+    }
+    return (int32_t)size;
+}
+
 // Index of an existing Int64s pool entry equal to `mask` (entries are
 // pointers to heap int64s; creating one would need the game's allocator).
 static int32_t int64_pool_find(uint64_t mask) {
@@ -2093,8 +2122,8 @@ StatsSetResult stats_set_typed(StatsObjectPtr obj, const char *prop, const Stats
         if (stored < 0) return STATS_SET_POOL_FULL;
     } else if (strcmp(type_name, "FixedString") == 0 || strcmp(type_name, "StatusIDs") == 0) {
         if (in->kind != STATS_SET_STRING) return STATS_SET_WRONG_TYPE;
-        stored = find_fixedstring_pool_index(in->string);
-        if (stored < 0) return STATS_SET_NOT_IN_POOL;
+        stored = fixedstrings_pool_index(in->string);
+        if (stored < 0) return STATS_SET_POOL_FULL;
     } else if (is_flag_type(type_name)) {
         if (in->kind != STATS_SET_LABELS) return STATS_SET_WRONG_TYPE;
         uint64_t mask = 0;
