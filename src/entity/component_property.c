@@ -433,6 +433,42 @@ int component_property_read_def(lua_State *L, void *componentPtr,
     }
 }
 
+static uint64_t g_read_bounds_refused = 0;
+
+bool component_property_read_in_bounds(const ComponentLayoutDef *layout,
+                                       const ComponentPropertyDef *prop) {
+    /* 0 means the size was never recorded, not that the component is empty:
+     * nothing to check against. */
+    if (!layout || !prop || layout->componentSize == 0) return true;
+    size_t width = component_field_type_width(prop);
+    if ((size_t)prop->offset > layout->componentSize ||
+        width > (size_t)layout->componentSize - prop->offset) {
+        g_read_bounds_refused++;
+        LOG_ENTITY_DEBUG(
+            "Refusing component read: %s.%s range [0x%x, 0x%zx) exceeds layout size 0x%x",
+            layout->componentName, prop->name, prop->offset,
+            (size_t)prop->offset + width, layout->componentSize);
+        return false;
+    }
+    return true;
+}
+
+uint64_t component_property_read_bounds_refused(void) {
+    return g_read_bounds_refused;
+}
+
+/* A read that leaves the component returns the neighbouring component's
+ * bytes as if they were the field. Refuse it (nil), as writes already are. */
+static int component_property_read_checked(lua_State *L, void *componentPtr,
+                                           const ComponentLayoutDef *layout,
+                                           const ComponentPropertyDef *prop) {
+    if (!component_property_read_in_bounds(layout, prop)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    return component_property_read_def(L, componentPtr, prop);
+}
+
 int component_property_read(lua_State *L, void *componentPtr,
                             const ComponentLayoutDef *layout,
                             const char *propertyName) {
@@ -440,7 +476,7 @@ int component_property_read(lua_State *L, void *componentPtr,
     if (!prop) {
         return 0;  // Property not found
     }
-    return component_property_read_def(L, componentPtr, prop);
+    return component_property_read_checked(L, componentPtr, layout, prop);
 }
 
 // ============================================================================
@@ -901,7 +937,7 @@ static int component_proxy_pairs_iter(lua_State *L) {
 
     const ComponentPropertyDef *prop = &proxy->layout->properties[*index];
     lua_pushstring(L, prop->name);
-    component_property_read_def(L, proxy->componentPtr, prop);
+    component_property_read_checked(L, proxy->componentPtr, proxy->layout, prop);
 
     (*index)++;
     return 2;
@@ -1290,6 +1326,9 @@ bool component_property_serialize_proxy(lua_State *L, int index) {
         lua_createtable(L, 0, component->layout->propertyCount);
         for (int i = 0; i < component->layout->propertyCount; i++) {
             const ComponentPropertyDef *prop = &component->layout->properties[i];
+            if (!component_property_read_in_bounds(component->layout, prop)) {
+                continue;
+            }
             if (prop->type == FIELD_TYPE_DYNAMIC_ARRAY) {
                 ArrayProxy array = {
                     .arrayPtr = (char *)component->componentPtr + prop->offset,
