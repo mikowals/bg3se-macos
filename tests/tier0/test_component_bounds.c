@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define KNOWN_OVERRUNS 101  /* measured 2026-09-19; the reader refuses these at runtime */
+#define KNOWN_OVERRUNS 0  /* 52 reachable before these layouts were corrected */
 
 static int count_overruns(const ComponentLayoutDef *layout, int print) {
     int n = 0;
@@ -48,13 +48,27 @@ static int count_overruns(const ComponentLayoutDef *layout, int print) {
     return n;
 }
 
+static int shadowed_by_hand_layout(const ComponentLayoutDef *gen) {
+    for (int i = 0; g_AllComponentLayouts[i] != NULL; i++) {
+        if (strcmp(g_AllComponentLayouts[i]->componentName, gen->componentName) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Mirrors component_property_init: a generated layout whose name already has
+ * a hand-written layout is never registered, so it is never read. */
 static int sweep(int print) {
     int total = 0;
     for (int i = 0; g_AllComponentLayouts[i] != NULL; i++) {
         total += count_overruns(g_AllComponentLayouts[i], print);
     }
     for (int i = 0; i < GENERATED_COMPONENT_COUNT; i++) {
-        total += count_overruns(g_GeneratedComponentLayouts[i], print);
+        const ComponentLayoutDef *gen = g_GeneratedComponentLayouts[i];
+        if (gen && !shadowed_by_hand_layout(gen)) {
+            total += count_overruns(gen, print);
+        }
     }
     return total;
 }

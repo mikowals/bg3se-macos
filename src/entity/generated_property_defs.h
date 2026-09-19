@@ -233,29 +233,7 @@ static const ComponentLayoutDef g_Gen_ecl_Scenery_Layout = {
 // ======================================================================
 
 static const ComponentPropertyDef g_Gen_ecl_TLPreviewDummy_Properties[] = {
-    { "CurrentLevel", 0x00, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Flags", 0x04, FIELD_TYPE_UINT16, 0, true },
-    { "field_30", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "PhysicsResourceId", 0x10, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "VisualResourceId", 0x14, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "SourceTemplateOverride", 0x18, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "ShapeShiftSourceTemplateOverride", 0x1c, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "OriginalCharacterTemplate", 0x20, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "Listener", 0x28, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "VisibilityFlags", 0x30, FIELD_TYPE_UINT32, 0, true },
-    { "field_AC", 0x34, FIELD_TYPE_UINT8, 0, true },
-    { "field_AD", 0x35, FIELD_TYPE_UINT8, 0, true },
-    { "LightChannel", 0x36, FIELD_TYPE_UINT8, 0, true },
-    { "TimelineType", 0x37, FIELD_TYPE_UINT8, 0, true },
-    { "ComponentLayoutFlags", 0x38, FIELD_TYPE_UINT32, 0, true },
-    { "ActiveDummy", 0x3c, FIELD_TYPE_BOOL, 0, true },
-    { "ArmorVisibilityControlled", 0x3d, FIELD_TYPE_BOOL, 0, true },
-    { "field_C2", 0x3e, FIELD_TYPE_UINT8, 0, true },
-    { "ArmorVisibilityControlled2", 0x3f, FIELD_TYPE_BOOL, 0, true },
-    { "field_C4", 0x40, FIELD_TYPE_UINT8, 0, true },
-    { "IsWeaponUnsheathed", 0x41, FIELD_TYPE_BOOL, 0, true },
-    { "ShouldShowVanityWeapon", 0x42, FIELD_TYPE_BOOL, 0, true },
-    { "_Pad", 0x48, FIELD_TYPE_UINT64, 0, true },
+    { "TLPreviewDummyPtr", 0x00, FIELD_TYPE_UINT64, 0, true },  // Ptr to 0xc0 (192b) malloc
 };
 
 static const ComponentLayoutDef g_Gen_ecl_TLPreviewDummy_Layout = {
@@ -5820,15 +5798,7 @@ static const ComponentLayoutDef g_Gen_ls_EffectCameraBehavior_Layout = {
 // ======================================================================
 
 static const ComponentPropertyDef g_Gen_ls_EffectComponent_Properties[] = {
-    { "Entity", 0x00, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "Initialized", 0x08, FIELD_TYPE_BOOL, 0, true },
-    { "OverridingFadeOpacity", 0x09, FIELD_TYPE_BOOL, 0, true },
-    { "EffectName", 0x0c, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "AnimationName", 0x10, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "UpdateQueued", 0x14, FIELD_TYPE_BOOL, 0, true },
-    { "SoundEntity", 0x18, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "ConstructFlagsAndSalt", 0x20, FIELD_TYPE_UINT16, 0, true },
-    { "_Pad", 0x28, FIELD_TYPE_UINT64, 0, true },
+    { "EffectPtr", 0x00, FIELD_TYPE_UINT64, 0, true },  // Ptr to 0x68 (104b) malloc
 };
 
 static const ComponentLayoutDef g_Gen_ls_EffectComponent_Layout = {
