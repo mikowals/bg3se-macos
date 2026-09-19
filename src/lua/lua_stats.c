@@ -11,6 +11,7 @@
 #include "../strings/fixed_string.h"
 #include "../entity/guid_lookup.h"
 #include "../enum/enum_registry.h"
+#include "../core/safe_memory.h"
 #include "../lifetime/lifetime.h"
 #include "../mod/mod_loader.h"
 #include "logging.h"
@@ -224,16 +225,32 @@ static int lua_stats_object_index(lua_State *L) {
                 }
                 return 1;
             }
+            case STATS_VALUE_EXTERNAL_STRING: {
+                // A string held in game memory (Conditions pool), copied
+                // through safe reads. Capped; conditions are short.
+                uint32_t len = v.str_len > 65536 ? 65536 : v.str_len;
+                luaL_Buffer b;
+                luaL_buffinit(L, &b);
+                char chunk[512];
+                for (uint32_t off = 0; off < len; ) {
+                    uint32_t n = len - off > sizeof(chunk) ? (uint32_t)sizeof(chunk) : len - off;
+                    if (!safe_memory_read((mach_vm_address_t)(uintptr_t)v.str_addr + off, chunk, n)) {
+                        break;
+                    }
+                    luaL_addlstring(&b, chunk, n);
+                    off += n;
+                }
+                luaL_pushresult(&b);
+                return 1;
+            }
             case STATS_VALUE_UNSUPPORTED:
             case STATS_VALUE_NONE:
             default:
-                break;
-        }
-        // Conditions and other string-pool types still read as FixedStrings.
-        const char *str_val = stats_get_string(ud->obj, key);
-        if (str_val) {
-            lua_pushstring(L, str_val);
-            return 1;
+                // RollConditions, StatsFunctors, Requirements (and a failed
+                // pool read) are not decoded. Reading them as FixedString
+                // indices returned unrelated strings; return nil instead.
+                lua_pushnil(L);
+                return 1;
         }
     }
 
@@ -265,33 +282,51 @@ static int lua_stats_object_newindex(lua_State *L) {
         return luaL_error(L, "Property '%s' is read-only", key);
     }
 
-    // Try to set as a stat property
+    // Write by the attribute's value-list type. The old path wrote a float's
+    // bits or a FixedString-pool index into whatever slot was named, so
+    // stat.Weight = 2.5 or stat["Damage Type"] = "Fire" silently corrupted
+    // the stat. On failure nothing is written and the reason is logged
+    // (Windows LuaStatSetAttribute also reports rather than throws).
+    const char *labels[64];
+    StatsSetValue in = {0};
     int value_type = lua_type(L, 3);
-
     if (value_type == LUA_TSTRING) {
-        const char *value = lua_tostring(L, 3);
-        bool success = stats_set_string(ud->obj, key, value);
-        if (!success) {
-            LOG_STATS_DEBUG("Failed to set string property '%s'", key);
-        }
+        in.kind = STATS_SET_STRING;
+        in.string = lua_tostring(L, 3);
     } else if (value_type == LUA_TNUMBER) {
-        if (lua_isinteger(L, 3)) {
-            int64_t value = lua_tointeger(L, 3);
-            bool success = stats_set_int(ud->obj, key, value);
-            if (!success) {
-                LOG_STATS_DEBUG("Failed to set integer property '%s'", key);
-            }
-        } else {
-            float value = (float)lua_tonumber(L, 3);
-            bool success = stats_set_float(ud->obj, key, value);
-            if (!success) {
-                LOG_STATS_DEBUG("Failed to set float property '%s'", key);
+        in.kind = STATS_SET_NUMBER;
+        in.number = lua_tonumber(L, 3);
+    } else if (value_type == LUA_TTABLE) {
+        in.kind = STATS_SET_LABELS;
+        int n = (int)lua_rawlen(L, 3);
+        if (n > 64) n = 64;
+        for (int i = 0; i < n; i++) {
+            lua_rawgeti(L, 3, i + 1);
+            labels[i] = lua_tostring(L, -1);   // stays valid: the table holds it
+            lua_pop(L, 1);
+            if (!labels[i]) {
+                return luaL_error(L, "'%s': flag list entries must be strings", key);
             }
         }
+        in.labels = labels;
+        in.label_count = n;
     } else {
         return luaL_error(L, "Unsupported value type for property '%s'", key);
     }
 
+    static const char *const reasons[] = {
+        [STATS_SET_NO_SUCH_ATTRIBUTE] = "no such attribute",
+        [STATS_SET_WRONG_TYPE] = "value has the wrong type for this attribute",
+        [STATS_SET_UNKNOWN_LABEL] = "not a label of this attribute's enumeration",
+        [STATS_SET_NOT_IN_POOL] = "value not present in the stats pool",
+        [STATS_SET_POOL_FULL] = "stats Floats pool is full",
+        [STATS_SET_UNSUPPORTED] = "writing this attribute type is not supported",
+        [STATS_SET_WRITE_FAILED] = "write failed",
+    };
+    StatsSetResult r = stats_set_typed(ud->obj, key, &in);
+    if (r != STATS_SET_OK) {
+        LOG_STATS_WARN("Cannot set %s.%s: %s", stats_get_name(ud->obj), key, reasons[r]);
+    }
     return 0;
 }
 

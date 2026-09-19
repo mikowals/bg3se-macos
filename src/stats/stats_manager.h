@@ -162,6 +162,7 @@ typedef enum {
     STATS_VALUE_STRING,       // FixedString, or an enumeration's label
     STATS_VALUE_GUID,
     STATS_VALUE_FLAGS,        // bitmask; labels via stats_flag_label
+    STATS_VALUE_EXTERNAL_STRING, // str_addr/str_len in game memory (Conditions)
     STATS_VALUE_UNSUPPORTED   // conditions, functors, translated strings
 } StatsValueKind;
 
@@ -174,6 +175,8 @@ typedef struct {
     uint8_t guid[16];
     uint64_t flags;
     void *value_list;
+    const void *str_addr;
+    uint32_t str_len;
 } StatsTypedValue;
 
 /**
@@ -181,6 +184,34 @@ typedef struct {
  * Returns false when the object has no such attribute.
  */
 bool stats_get_typed(StatsObjectPtr obj, const char *prop, StatsTypedValue *out);
+
+typedef enum { STATS_SET_NUMBER, STATS_SET_STRING, STATS_SET_LABELS } StatsSetKind;
+
+typedef struct {
+    StatsSetKind kind;
+    double number;
+    const char *string;
+    const char *const *labels;   // STATS_SET_LABELS (flags)
+    int label_count;
+} StatsSetValue;
+
+typedef enum {
+    STATS_SET_OK = 0,
+    STATS_SET_NO_SUCH_ATTRIBUTE,
+    STATS_SET_WRONG_TYPE,
+    STATS_SET_UNKNOWN_LABEL,     // enumeration/flag label not in its value list
+    STATS_SET_NOT_IN_POOL,       // FixedString / flag combination not in its pool
+    STATS_SET_POOL_FULL,         // Floats pool at capacity
+    STATS_SET_UNSUPPORTED,       // Guid, TranslatedString, conditions, functors
+    STATS_SET_WRITE_FAILED
+} StatsSetResult;
+
+/**
+ * Write a property by its value-list type (Windows: LuaStatSetAttribute).
+ * Never writes a value of the wrong representation: on any failure the
+ * property is left unchanged.
+ */
+StatsSetResult stats_set_typed(StatsObjectPtr obj, const char *prop, const StatsSetValue *in);
 
 /** Label of flag value `bit_value` (bit bit_value-1) in a flags value list. */
 const char *stats_flag_label(void *value_list, int bit_value);
