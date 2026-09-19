@@ -10,6 +10,7 @@
 #include "../stats/prototype_managers.h"
 #include "../strings/fixed_string.h"
 #include "../entity/guid_lookup.h"
+#include "../enum/enum_registry.h"
 #include "../lifetime/lifetime.h"
 #include "../mod/mod_loader.h"
 #include "logging.h"
@@ -780,7 +781,15 @@ static int lua_stats_get_cached_interrupt(lua_State *L) {
 static int lua_stats_enum_index_to_label(lua_State *L) {
     const char *enum_name = luaL_checkstring(L, 1);
     int32_t index = (int32_t)luaL_checkinteger(L, 2);
-    const char *label = stats_enum_index_to_label(enum_name, index);
+    // Windows order: C++ enum/bitfield registry by name ("DamageType"),
+    // then the stats ModifierValueLists ("Damage Type").
+    const char *label = NULL;
+    EnumTypeInfo *info = enum_registry_find_by_name(enum_name);
+    if (info) {
+        label = enum_find_label(info->registry_index, (uint64_t)(int64_t)index);
+    } else {
+        label = stats_enum_index_to_label(enum_name, index);
+    }
     if (label) {
         lua_pushstring(L, label);
     } else {
@@ -793,7 +802,13 @@ static int lua_stats_enum_index_to_label(lua_State *L) {
 static int lua_stats_enum_label_to_index(lua_State *L) {
     const char *enum_name = luaL_checkstring(L, 1);
     const char *label = luaL_checkstring(L, 2);
-    int32_t index = stats_enum_label_to_index(enum_name, label);
+    int64_t index = -1;
+    EnumTypeInfo *info = enum_registry_find_by_name(enum_name);
+    if (info) {
+        index = enum_find_value(info->registry_index, label);
+    } else {
+        index = stats_enum_label_to_index(enum_name, label);
+    }
     if (index >= 0) {
         lua_pushinteger(L, index);
     } else {
