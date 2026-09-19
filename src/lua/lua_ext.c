@@ -2329,9 +2329,9 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "BG3SE_AddTest(2, 'Osi.IsAlive', function()\n"
         "  local host = Osi.GetHostCharacter()\n"
         "  if host then\n"
-        "    local alive = Osi.IsAlive(host)\n"
-        "    assert(alive == nil or type(alive) == 'number', 'Expected number or nil')\n"
-        "    if alive then assert(alive == 0 or alive == 1, 'Expected 0 or 1: ' .. alive) end\n"
+        "    -- The loaded host is alive; nil meant the function did not resolve.\n"
+        "    AssertEquals(Osi.IsAlive(host), 1, 'Osi.IsAlive(host)')\n"
+        "    AssertEquals(Osi.IsDead(host), 0, 'Osi.IsDead(host)')\n"
         "  end\n"
         "end)\n";
 
