@@ -289,4 +289,12 @@ void component_property_iterate_layouts(ComponentLayoutIteratorFn callback, void
  */
 void component_property_dump_layouts(void);
 
+/**
+ * As component_property_check_proxy, but also yields the wrapped component
+ * pointer (and rejects a proxy whose lifetime scope has expired).
+ * Returns NULL if the value is not a live component proxy.
+ */
+const ComponentLayoutDef *component_property_check_proxy_ex(lua_State *L, int index,
+                                                            void **outPtr);
+
 #endif // COMPONENT_PROPERTY_H

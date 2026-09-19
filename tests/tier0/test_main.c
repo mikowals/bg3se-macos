@@ -24,6 +24,7 @@ void register_arm64_prologue_tests(void);
 void register_enum_ext_tests(void);
 void register_osi_hook_abi_tests(void);
 void register_staticdata_layout_tests(void);
+void register_stride_scan_tests(void);
 
 int main(void) {
     printf("=== BG3SE Tier 0 Unit Tests ===\n\n");
@@ -43,6 +44,7 @@ int main(void) {
     register_enum_ext_tests();
     register_osi_hook_abi_tests();
     register_staticdata_layout_tests();
+    register_stride_scan_tests();
 
     printf("\n=== Results: %d/%d passed, %d failed ===\n",
            g_passed, g_passed + g_failed, g_failed);
