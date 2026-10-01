@@ -2665,7 +2665,7 @@ static const ComponentLayoutDef g_eoc_CanShootThroughBoostComponent_Layout = {
 // eoc::CanTravelComponent - 6 bytes (0x6)
 // Source: CanTravelComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CanTravelComponent_Properties[] = {
-    { "field_2", 0x00, FIELD_TYPE_UINT32, 0, false },
+    { "field_2", 0x02, FIELD_TYPE_UINT32, 0, false },
 };
 static const ComponentLayoutDef g_eoc_CanTravelComponent_Layout = {
     .componentName = "eoc::CanTravelComponent",
@@ -3721,10 +3721,10 @@ static const ComponentLayoutDef g_eoc_StealthComponent_Layout = {
 static const ComponentPropertyDef g_eoc_TurnOrderComponent_Properties[] = {
     { "TurnOrderIndices", 0x00, FIELD_TYPE_DYNAMIC_ARRAY, 0, true, ELEM_TYPE_UNKNOWN, 8 },
     { "TurnOrderIndices2", 0x10, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
-    { "field_40", 0x20, FIELD_TYPE_INT32, 0, false },
-    { "field_44", 0x24, FIELD_TYPE_INT32, 0, false },
-    { "field_48", 0x28, FIELD_TYPE_INT32, 0, false },
-    { "field_4C", 0x2C, FIELD_TYPE_FLOAT, 0, false },
+    { "field_40", 0x40, FIELD_TYPE_INT32, 0, false },
+    { "field_44", 0x44, FIELD_TYPE_INT32, 0, false },
+    { "field_48", 0x48, FIELD_TYPE_INT32, 0, false },
+    { "field_4C", 0x4c, FIELD_TYPE_FLOAT, 0, false },
 };
 static const ComponentLayoutDef g_eoc_TurnOrderComponent_Layout = {
     .componentName = "eoc::TurnOrderComponent",
@@ -4415,7 +4415,7 @@ static const ComponentLayoutDef g_eoc_IDComponent_Layout = {
 // Source: IncapacitatedComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_IncapacitatedComponent_Properties[] = {
     { "field_0", 0x00, FIELD_TYPE_UINT32, 0, false },
-    { "field_48", 0x04, FIELD_TYPE_UINT8, 0, false },
+    { "field_48", 0x48, FIELD_TYPE_UINT8, 0, false },
 };
 static const ComponentLayoutDef g_eoc_IncapacitatedComponent_Layout = {
     .componentName = "eoc::status::IncapacitatedComponent",
@@ -4457,9 +4457,9 @@ static const ComponentLayoutDef g_eoc_LoseControlComponent_Layout = {
 // eoc::summon::IsSummonComponent - 48 bytes (0x30)
 // Source: IsSummonComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_IsSummonComponent_Properties[] = {
-    { "field_10", 0x00, FIELD_TYPE_GUID, 0, false },
-    { "field_20", 0x10, FIELD_TYPE_ENTITY_HANDLE, 0, false },
-    { "field_28", 0x18, FIELD_TYPE_FIXEDSTRING, 0, false },
+    { "field_10", 0x10, FIELD_TYPE_GUID, 0, false },
+    { "field_20", 0x20, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "field_28", 0x28, FIELD_TYPE_FIXEDSTRING, 0, false },
 };
 static const ComponentLayoutDef g_eoc_IsSummonComponent_Layout = {
     .componentName = "eoc::summon::IsSummonComponent",
