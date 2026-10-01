@@ -2527,8 +2527,8 @@ static const ComponentLayoutDef g_eoc_BoostConditionComponent_Layout = {
 // eoc::BoostInfoComponent - 88 bytes (0x58)
 // Source: BoostInfoComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_BoostInfoComponent_Properties[] = {
-    { "field_20", 0x00, FIELD_TYPE_BOOL, 0, false },
-    { "Owner", 0x04, FIELD_TYPE_ENTITY_HANDLE, 0, false },
+    { "field_20", 0x10, FIELD_TYPE_BOOL, 0, false },
+    { "Owner", 0x30, FIELD_TYPE_ENTITY_HANDLE, 0, false },
 };
 static const ComponentLayoutDef g_eoc_BoostInfoComponent_Layout = {
     .componentName = "eoc::BoostInfoComponent",
@@ -2726,7 +2726,7 @@ static const ComponentPropertyDef g_eoc_CharacterCreationStatsComponent_Properti
     { "BodyType", 0x20, FIELD_TYPE_UINT8, 0, false },
     { "BodyShape", 0x21, FIELD_TYPE_UINT8, 0, false },
     { "Abilities", 0x24, FIELD_TYPE_DYNAMIC_ARRAY, 0, true },
-    { "field_5C", 0x34, FIELD_TYPE_UINT8, 0, false },
+    { "field_5C", 0x54, FIELD_TYPE_UINT8, 0, false },
 };
 static const ComponentLayoutDef g_eoc_CharacterCreationStatsComponent_Layout = {
     .componentName = "eoc::CharacterCreationStatsComponent",

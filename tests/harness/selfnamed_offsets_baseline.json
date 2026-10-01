@@ -187,12 +187,12 @@
  [
   "eoc::BoostInfoComponent",
   "field_20",
-  0
+  16
  ],
  [
   "eoc::BoostInfoComponent",
   "field_20",
-  0
+  16
  ],
  [
   "eoc::CanMoveComponent",
@@ -217,12 +217,12 @@
  [
   "eoc::CharacterCreationStatsComponent",
   "field_5C",
-  34
+  84
  ],
  [
   "eoc::CharacterCreationStatsComponent",
   "field_5C",
-  52
+  84
  ],
  [
   "eoc::DamageBonusBoostComponent",
@@ -352,17 +352,17 @@
  [
   "eoc::camp::ChestComponent",
   "field_1C",
-  4
+  20
  ],
  [
   "eoc::camp::ChestComponent",
   "field_20",
-  8
+  24
  ],
  [
   "eoc::camp::ChestComponent",
   "field_28",
-  16
+  32
  ],
  [
   "eoc::character_creation::ChangeAppearanceDefinitionComponent",
@@ -487,7 +487,7 @@
  [
   "eoc::ruleset::RulesetComponent",
   "field_40",
-  0
+  80
  ],
  [
   "eoc::spatial_grid::DataComponent",
@@ -512,7 +512,7 @@
  [
   "esv::BreadcrumbComponent",
   "field_118",
-  0
+  256
  ],
  [
   "esv::GameTimerComponent",

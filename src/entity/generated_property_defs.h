@@ -791,8 +791,8 @@ static const ComponentLayoutDef g_Gen_eoc_BoostConditionComponent_Layout = {
 // ======================================================================
 
 static const ComponentPropertyDef g_Gen_eoc_BoostInfoComponent_Properties[] = {
-    { "field_20", 0x00, FIELD_TYPE_BOOL, 0, true },
-    { "Owner", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "field_20", 0x10, FIELD_TYPE_BOOL, 0, true },
+    { "Owner", 0x30, FIELD_TYPE_ENTITY_HANDLE, 0, true },
 };
 
 static const ComponentLayoutDef g_Gen_eoc_BoostInfoComponent_Layout = {
@@ -987,7 +987,7 @@ static const ComponentPropertyDef g_Gen_eoc_CharacterCreationStatsComponent_Prop
     { "SubRace", 0x10, FIELD_TYPE_GUID, 0, true },
     { "BodyType", 0x20, FIELD_TYPE_UINT8, 0, true },
     { "BodyShape", 0x21, FIELD_TYPE_UINT8, 0, true },
-    { "field_5C", 0x22, FIELD_TYPE_UINT8, 0, true },
+    { "field_5C", 0x54, FIELD_TYPE_UINT8, 0, true },
 };
 
 static const ComponentLayoutDef g_Gen_eoc_CharacterCreationStatsComponent_Layout = {
@@ -1953,10 +1953,10 @@ static const ComponentLayoutDef g_Gen_eoc_calendar_StartingDateComponent_Layout 
 // ======================================================================
 
 static const ComponentPropertyDef g_Gen_eoc_camp_ChestComponent_Properties[] = {
-    { "UserID", 0x00, FIELD_TYPE_INT32, 0, true },
-    { "field_1C", 0x04, FIELD_TYPE_FIXEDSTRING, 0, true },
-    { "field_20", 0x08, FIELD_TYPE_ENTITY_HANDLE, 0, true },
-    { "field_28", 0x10, FIELD_TYPE_INT32, 0, true },
+    { "UserID", 0x10, FIELD_TYPE_INT32, 0, true },
+    { "field_1C", 0x14, FIELD_TYPE_FIXEDSTRING, 0, true },
+    { "field_20", 0x18, FIELD_TYPE_ENTITY_HANDLE, 0, true },
+    { "field_28", 0x20, FIELD_TYPE_INT32, 0, true },
 };
 
 static const ComponentLayoutDef g_Gen_eoc_camp_ChestComponent_Layout = {
@@ -3728,7 +3728,7 @@ static const ComponentLayoutDef g_Gen_eoc_rest_RestingEntities_Layout = {
 // ======================================================================
 
 static const ComponentPropertyDef g_Gen_eoc_ruleset_RulesetComponent_Properties[] = {
-    { "field_40", 0x00, FIELD_TYPE_GUID, 0, true },
+    { "field_40", 0x50, FIELD_TYPE_GUID, 0, true },
 };
 
 static const ComponentLayoutDef g_Gen_eoc_ruleset_RulesetComponent_Layout = {
@@ -4348,7 +4348,7 @@ static const ComponentLayoutDef g_Gen_esv_BaseStatsComponent_Layout = {
 // ======================================================================
 
 static const ComponentPropertyDef g_Gen_esv_BreadcrumbComponent_Properties[] = {
-    { "field_118", 0x00, FIELD_TYPE_VEC3, 0, true },
+    { "field_118", 0x100, FIELD_TYPE_VEC3, 0, true },
 };
 
 static const ComponentLayoutDef g_Gen_esv_BreadcrumbComponent_Layout = {
