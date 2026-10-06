@@ -64,7 +64,9 @@ static const char *js_stringify_expr(lua_State *L, const char *chunk) {
  * the fault is deterministic. alarm() bounds the hang case.
  *
  * Returns 1 if the child exited 0, 0 if it faulted/hung/exited non-zero,
- * -1 if isolation is unavailable (caller then skips). */
+ * -1 if isolation is unavailable. Callers ASSERT_EQ(rc, 1), so -1 FAILS: an
+ * earlier `if (rc < 0) return;` passed all five tests while test_main.c never
+ * set argv0, i.e. none of them had ever run. */
 
 static const char *g_json_argv0 = NULL;
 
@@ -219,17 +221,34 @@ static int parse_nested_body(int depth) {
 
 TEST(parse_deep_nesting_does_not_corrupt_heap) {
     /* An Ext.Net payload or a mod config can nest this far. The parser
-     * recurses one Lua-stack frame per level and never calls lua_checkstack,
-     * so past LUA_MINSTACK (20 guaranteed slots) it writes past the stack. */
+     * recurses one Lua-stack frame per level; without a per-level
+     * lua_checkstack, past LUA_MINSTACK (20 guaranteed slots) it writes past
+     * the stack (parse64 hung, parse256 segfaulted). */
     int rc = js_run_isolated("parse64");
-    if (rc < 0) return;                  /* fork unavailable */
     ASSERT_EQ(rc, 1);
 }
 
 TEST(parse_very_deep_nesting_does_not_corrupt_heap) {
     int rc = js_run_isolated("parse256");
-    if (rc < 0) return;
     ASSERT_EQ(rc, 1);
+}
+
+TEST(parse_rejects_nesting_past_the_cap) {
+    /* Hostile input must be refused, not recursed into: 4096 levels is far
+     * past JSON_PARSE_MAX_DEPTH. Safe in-process only because the parser now
+     * reserves Lua stack per level (the two isolated tests above pin that). */
+    enum { DEPTH = 4096 };
+    char *buf = (char *)malloc(DEPTH * 2 + 2);
+    ASSERT_NOT_NULL(buf);
+    memset(buf, '[', DEPTH);
+    buf[DEPTH] = '1';
+    memset(buf + DEPTH + 1, ']', DEPTH);
+    buf[DEPTH * 2 + 1] = '\0';
+    lua_State *L = js_new();
+    const char *r = json_parse_value(L, buf);
+    free(buf);
+    ASSERT_NULL(r);
+    lua_close(L);
 }
 
 /* ------------------------------------------------------------------ */
@@ -553,13 +572,11 @@ TEST(stringify_shallow_nesting_is_clean) {
 TEST(stringify_16_deep_does_not_corrupt_heap) {
     /* 16 levels is an ordinary MCM/PersistentVars settings tree. */
     int rc = js_run_isolated("str16");
-    if (rc < 0) return;
     ASSERT_EQ(rc, 1);
 }
 
 TEST(stringify_64_deep_does_not_corrupt_heap) {
     int rc = js_run_isolated("str64");
-    if (rc < 0) return;
     ASSERT_EQ(rc, 1);
 }
 
@@ -568,7 +585,6 @@ TEST(stringify_self_referential_table_does_not_corrupt_heap) {
      * { __index = _G } metatable backlink. The depth cap makes it *return*,
      * but the recursion has already run past the Lua stack. */
     int rc = js_run_isolated("cyclic");
-    if (rc < 0) return;
     ASSERT_EQ(rc, 1);
 }
 
@@ -641,6 +657,7 @@ void register_lua_json_tests(void) {
     RUN_TEST(parse_moderate_nesting_ok);
     RUN_TEST(parse_deep_nesting_does_not_corrupt_heap);
     RUN_TEST(parse_very_deep_nesting_does_not_corrupt_heap);
+    RUN_TEST(parse_rejects_nesting_past_the_cap);
     RUN_TEST(parse_number_forms);
     RUN_TEST(parse_large_integer_is_exact);
     RUN_TEST(parse_literals);

@@ -127,8 +127,19 @@ static const char *json_parse_number(lua_State *L, const char *json) {
     return json;
 }
 
-static const char *json_parse_object(lua_State *L, const char *json) {
+// Containers nest by recursion, and every open level keeps its table (plus, for
+// an object, the pending key) on the Lua stack. Lua only guarantees LUA_MINSTACK
+// (20) free slots, so each level must reserve its own; without that a payload
+// nested ~20 deep writes past the stack and corrupts the heap. The depth cap
+// bounds the C recursion for hostile input.
+#define JSON_PARSE_MAX_DEPTH 512
+#define JSON_PARSE_STACK_PER_LEVEL 4
+
+static const char *json_parse_value_at(lua_State *L, const char *json, int depth);
+
+static const char *json_parse_object(lua_State *L, const char *json, int depth) {
     if (*json != '{') return NULL;
+    if (depth > JSON_PARSE_MAX_DEPTH || !lua_checkstack(L, JSON_PARSE_STACK_PER_LEVEL)) return NULL;
     json = json_skip_whitespace(json + 1);
 
     lua_newtable(L);
@@ -148,7 +159,7 @@ static const char *json_parse_object(lua_State *L, const char *json) {
         json = json_skip_whitespace(json + 1);
 
         // Parse value
-        json = json_parse_value(L, json);
+        json = json_parse_value_at(L, json, depth + 1);
         if (!json) return NULL;
 
         // Set table[key] = value
@@ -161,8 +172,9 @@ static const char *json_parse_object(lua_State *L, const char *json) {
     }
 }
 
-static const char *json_parse_array(lua_State *L, const char *json) {
+static const char *json_parse_array(lua_State *L, const char *json, int depth) {
     if (*json != '[') return NULL;
+    if (depth > JSON_PARSE_MAX_DEPTH || !lua_checkstack(L, JSON_PARSE_STACK_PER_LEVEL)) return NULL;
     json = json_skip_whitespace(json + 1);
 
     lua_newtable(L);
@@ -172,7 +184,7 @@ static const char *json_parse_array(lua_State *L, const char *json) {
 
     while (1) {
         json = json_skip_whitespace(json);
-        json = json_parse_value(L, json);
+        json = json_parse_value_at(L, json, depth + 1);
         if (!json) return NULL;
 
         lua_rawseti(L, -2, index++);
@@ -188,15 +200,15 @@ static const char *json_parse_array(lua_State *L, const char *json) {
 // Public Parsing Functions
 // ============================================================================
 
-const char *json_parse_value(lua_State *L, const char *json) {
+static const char *json_parse_value_at(lua_State *L, const char *json, int depth) {
     json = json_skip_whitespace(json);
 
     if (*json == '"') {
         return json_parse_string(L, json);
     } else if (*json == '{') {
-        return json_parse_object(L, json);
+        return json_parse_object(L, json, depth);
     } else if (*json == '[') {
-        return json_parse_array(L, json);
+        return json_parse_array(L, json, depth);
     } else if (*json == 't' && strncmp(json, "true", 4) == 0) {
         lua_pushboolean(L, 1);
         return json + 4;
@@ -211,6 +223,10 @@ const char *json_parse_value(lua_State *L, const char *json) {
     }
 
     return NULL;
+}
+
+const char *json_parse_value(lua_State *L, const char *json) {
+    return json_parse_value_at(L, json, 0);
 }
 
 // ============================================================================

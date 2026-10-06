@@ -24,7 +24,17 @@ void register_enum_ext_tests(void);
 void register_osi_hook_abi_tests(void);
 void register_staticdata_layout_tests(void);
 
-int main(void) {
+/* test_lua_json.c re-execs this binary to run its heap-corrupting cases in a
+ * cold process. Without this dispatch those tests can never execute. */
+void lua_json_tests_set_argv0(const char *argv0);
+int lua_json_selftest_main(const char *mode);
+
+int main(int argc, char **argv) {
+    if (argc == 3 && strcmp(argv[1], "--json-selftest") == 0) {
+        return lua_json_selftest_main(argv[2]);
+    }
+    lua_json_tests_set_argv0(argv[0]);
+
     printf("=== BG3SE Tier 0 Unit Tests ===\n\n");
 
     register_safe_memory_tests();
