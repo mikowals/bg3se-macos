@@ -2665,7 +2665,7 @@ static const ComponentLayoutDef g_eoc_CanShootThroughBoostComponent_Layout = {
 // eoc::CanTravelComponent - 6 bytes (0x6)
 // Source: CanTravelComponent from Windows BG3SE
 static const ComponentPropertyDef g_eoc_CanTravelComponent_Properties[] = {
-    { "field_2", 0x02, FIELD_TYPE_UINT32, 0, false },
+    { "field_2", 0x02, FIELD_TYPE_UINT16, 0, false },
 };
 static const ComponentLayoutDef g_eoc_CanTravelComponent_Layout = {
     .componentName = "eoc::CanTravelComponent",
