@@ -3343,9 +3343,11 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "    'DealDamage unsubscribe result')\n"
         "end)\n";
 
-    // Tier 2: Wave 3 end-to-end damage hook probe. The subscriptions are armed
-    // when the Lua test definitions load so a real game tick can occur before
-    // the synchronous test runner checks the paired counts.
+    // Tier 2: Wave 3 end-to-end damage hook probe. The damage-event counters
+    // are armed when the Lua test definitions load so a real game tick can
+    // occur before the synchronous test runner checks the paired counts. The
+    // ExecuteFunctor recorder subscribes only in BG3SE_PrimeDamageProbe():
+    // while it is subscribed, every functor dispatch builds e.Params.
     //
     // On 4.1.1.7398727 the hooked ProcessDealDamageFunctors has one direct
     // caller, ProcessSpellFunctors: only damage from a cast (weapon attacks
@@ -3363,8 +3365,7 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "    BG3SE_DamageEventProbe.deal = BG3SE_DamageEventProbe.deal + 1\n"
         "  end)\n"
         "end\n"
-        "if BG3SE_DamageEventProbe.functorId == nil then\n"
-        "  BG3SE_DamageEventProbe.functorId = Ext.Events.ExecuteFunctor:Subscribe(function(e)\n"
+        "local function BG3SE_RecordAttackTarget(e)\n"
         "    local p = e.Params\n"
         "    if not p or p.Type ~= 'AttackTarget' or not p.Attack then return end\n"
         "    local host = Osi.GetHostCharacter()\n"
@@ -3381,7 +3382,6 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "      caster = tostring(p.Caster), target = tostring(p.Target),\n"
         "      spell = p.SpellId and p.SpellId.OriginatorPrototype,\n"
         "      total = p.Attack.TotalDamageDone, sum = sum, types = types }\n"
-        "  end)\n"
         "end\n"
         "-- Run before !test_ingame (the runner is synchronous, so the damage must\n"
         "-- happen on an earlier tick): the host casts Vicious Mockery at another\n"
@@ -3421,6 +3421,10 @@ void lua_ext_register_global_helpers(lua_State *L) {
         "  BG3SE_DamageEventProbe.tried[best] = true\n"
         "  -- An earlier action still queued (e.g. waiting on a prompt) blocks this one.\n"
         "  Osi.PurgeOsirisQueue(h, 1)\n"
+        "  if BG3SE_DamageEventProbe.functorId == nil then\n"
+        "    BG3SE_DamageEventProbe.functorId =\n"
+        "      Ext.Events.ExecuteFunctor:Subscribe(BG3SE_RecordAttackTarget)\n"
+        "  end\n"
         "  Osi.UseSpell(h, 'Target_ViciousMockery', best,\n"
         "    'NULL_00000000-0000-0000-0000-000000000000', 0)\n"
         "  return best\n"
