@@ -1971,9 +1971,22 @@ bool stats_set_string(StatsObjectPtr obj, const char *prop, const char *value) {
     void *write_addr = get_property_write_address(obj, prop, &prop_index, "stats_set_string");
     if (!write_addr) return false;
 
-    int32_t pool_index = fixedstrings_pool_index(value);
+    // This path is untyped (SetRawAttribute, SetProperty with a string), so it
+    // may only intern a new string where stats_set_typed would: a FixedString or
+    // StatusIDs attribute. Anything else keeps the find-only lookup, so a new
+    // string is refused rather than stored as a pool index in a slot that holds
+    // a different kind of value.
+    int type_index = -1;
+    void *value_list = NULL;
+    const char *type_name = NULL;
+    bool may_intern = resolve_attribute(obj, prop, &type_index, &value_list, &type_name) &&
+                      (strcmp(type_name, "FixedString") == 0 ||
+                       strcmp(type_name, "StatusIDs") == 0);
+    int32_t pool_index = may_intern ? fixedstrings_pool_index(value)
+                                    : find_fixedstring_pool_index(value);
     if (pool_index < 0) {
-        LOG_STATS_DEBUG("stats_set_string: '%s' not in the FixedStrings pool and could not be added", value);
+        LOG_STATS_DEBUG("stats_set_string: '%s' not in the FixedStrings pool%s", value,
+                        may_intern ? " and could not be added" : "");
         return false;
     }
 
