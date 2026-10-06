@@ -85,10 +85,9 @@ static int g_TypeIdRetryCount = 0;
 // This matches the Windows offset exactly
 #define OFFSET_ENTITYWORLD_IN_EOCSERVER 0x288
 
-// Offset of EntityWorld* within EoCClient struct
-// Windows BG3SE: EntityWorld at +0x1D0, PermissionsManager at +0x1D8
-// Previous 0x1B0 was wrong (overlapped with Array fields before PermissionsManager)
-#define OFFSET_ENTITYWORLD_IN_EOCCLIENT 0x1D0
+// Offset of EntityWorld* within EoCClient: ecl::EocClient::ConfigureECS passes
+// this+0x1a0 to RegisterComponents/RegisterSystems as the ecs::EntityWorld&.
+#define OFFSET_ENTITYWORLD_IN_EOCCLIENT 0x1a0
 
 // Verified for 4.1.1.7209685 in
 // ghidra/offsets/COMPONENT_OPS_AND_PROTO_INIT.md, Dig 1; re-verified for
